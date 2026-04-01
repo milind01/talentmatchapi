@@ -1,0 +1,6 @@
+Artificial Intelligence and Machine Learning
+
+Artificial Intelligence (AI) is transforming industries. Machine Learning (ML) is a subset of AI.
+AI applications include chatbots, recommendation systems, and autonomous vehicles.
+Deep Learning uses neural networks to process complex patterns in data.
+Natural Language Processing enables computers to understand human language.
