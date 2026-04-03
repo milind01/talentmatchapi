@@ -1,0 +1,166 @@
+Core Idea (Agentic System View)
+
+TalentMatch shouldn’t be just a tool—it should behave like a team of AI agents:
+
+🤖 Recruiter Agent
+🤖 Resume Analyst Agent
+🤖 Candidate Engagement Agent
+🤖 Interview Coordinator Agent
+🤖 Hiring Decision Assistant
+
+Each agent has clear responsibilities + tools + memory + goals
+
+🧩 2. Core Components You Should Build
+1. 📄 Resume Ingestion & Understanding Engine
+
+Use case: Upload + parse resumes intelligently
+
+Features:
+PDF/DOC upload
+Resume parsing (skills, experience, education)
+Store:
+Structured data → PostgreSQL
+Embeddings → Vector DB (Chroma / Pinecone)
+Resume classification:
+Role (Backend / Data / DevOps)
+Seniority (Junior/Mid/Senior)
+Agent:
+
+👉 Resume Analyzer Agent
+
+Extracts meaning, not just keywords
+Normalizes skills (e.g., “Spring Boot” = “Java Backend”)
+2. 🔍 Semantic Candidate Search (RAG-based)
+
+Use case: “Find me Java dev with AWS + 5 yrs exp”
+
+Features:
+Natural language query → embedding
+Vector similarity search
+Filters:
+Experience
+Location
+Skills
+Ranking score
+Agent:
+
+👉 Talent Search Agent
+
+Combines:
+Semantic search (vector DB)
+Structured filters (PostgreSQL)
+3. 🧠 JD (Job Description) Intelligence Engine
+
+Use case: Upload JD → system understands requirements
+
+Features:
+Extract:
+Required skills
+Optional skills
+Experience range
+Generate:
+Ideal candidate profile
+Matching criteria
+Agent:
+
+👉 JD Analyzer Agent
+
+Converts JD → structured + embedding
+4. 🎯 Candidate Matching & Scoring Engine
+
+Use case: Rank candidates for a JD
+
+Features:
+Matching score:
+Skill match %
+Experience relevance
+Semantic similarity
+Explainability:
+“Why this candidate is a good fit”
+Agent:
+
+👉 Matching Agent
+
+Combines:
+Resume embedding
+JD embedding
+Business rules
+5. 💬 Candidate Engagement Agent (Chatbot)
+
+Use case: Talk to candidates automatically
+
+Features:
+Ask screening questions
+Collect missing info
+Answer candidate queries
+Personalized responses
+Channels:
+WhatsApp / Email / Web chat
+Agent:
+
+👉 Conversational Recruiting Agent
+
+Maintains candidate context (memory)
+6. 📅 Interview Scheduling Agent
+
+Use case: Automate interview coordination
+
+Features:
+Check interviewer availability
+Suggest time slots
+Send invites
+Reschedule automatically
+Agent:
+
+👉 Scheduler Agent
+
+Integrates with:
+Google Calendar / Outlook
+7. 🧪 Screening & Evaluation Engine
+
+Use case: Pre-screen candidates before interview
+
+Features:
+AI-generated screening questions
+Coding/MCQ tests
+Resume-based questions
+Agent:
+
+👉 Screening Agent
+
+Adaptive questioning based on candidate profile
+8. 📊 Hiring Insights & Analytics Dashboard
+
+Use case: Help HR make decisions
+
+Features:
+Funnel metrics:
+Applied → Shortlisted → Interviewed → Selected
+Skill demand trends
+Hiring time analytics
+9. 🧠 Hiring Decision Assistant (AI Copilot)
+
+Use case: Help recruiter decide
+
+Features:
+Compare candidates
+Summarize strengths/weaknesses
+Predict success probability
+Agent:
+
+👉 Decision Agent
+
+Gives:
+“Top 3 candidates for this role”
+“Risk factors”
+10. 🗂️ Candidate Memory & Profile Timeline
+
+Use case: Long-term candidate tracking
+
+Features:
+Interaction history
+Previous interviews
+Feedback logs
+Concept:
+
+👉 This is your agent memory layer
