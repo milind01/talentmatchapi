@@ -68,14 +68,30 @@ class RAGService:
             # Add user_id filter
             if filters is None:
                 filters = {}
-            filters["user_id"] = user_id
+                filters["user_id"] = user_id
+
+            # # Build filters properly
+            # conditions = [{"user_id": user_id}]
+
+            # if filters:
+            #     for key, value in filters.items():
+            #         conditions.append({key: value})
+
+            # if len(conditions) == 1:
+            #     where_clause = conditions[0]
+            # else:
+            #     where_clause = {"$and": conditions}
             
             # Query vector store with embedding
             results = await self.vector_store.query(
                 vector=query_embedding,
-                k=self.top_k,
+                # k=self.top_k,
+                 k=k,
                 filters=filters,
+                # where=where_clause,
+             
             )
+
             
             # Filter by similarity threshold
             filtered_results = [
@@ -142,6 +158,7 @@ Answer:"""
         user_id,
         documents: List[dict],
         document_id: int,
+        doctype: str,   # ✅ ADD THIS
     ) -> List[dict]:
         """Process and embed documents for vector store.
         
@@ -165,6 +182,8 @@ Answer:"""
                     "content": chunk["content"],
                     "metadata": {
                         "user_id": user_id, 
+                        "document_id": document_id,   # (good to add here also)
+                        "doctype": doctype,           # ✅ KEY ADDITION
                         "chunk_index": chunk.get("index", 0),
                         "start_char": chunk.get("start_char", 0),
                         "end_char": chunk.get("end_char", 0),

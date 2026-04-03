@@ -10,17 +10,27 @@ from src.ai.embeddings_service import EmbeddingsService
 from src.ai.llm_service import LLMService
 from src.services.chroma_store import ChromaVectorStore  # or your actual class
 from src.ai.rag_service import RAGService
+from src.ai.agent_tools import initialize_tools, get_tool_registry
+from src.ai.agent_orchestrator import AgentOrchestrator
+from src.ai.memory_service import get_memory_store
+from src.ai.reflection_service import ReflectionService
+from src.ai.query_router import QueryRouter, QueryType
+from src.application.candidate_extraction_service import CandidateExtractionService
+from src.application.query_augmentation_service import QueryAugmentationService
+from src.data.schemas import CandidateDetail
 
 logger = logging.getLogger(__name__)
 embeddings_service = EmbeddingsService()
-vector_store=ChromaVectorStore(
-        embedding_service=embeddings_service
-    ),
+vector_store = ChromaVectorStore(
+    embedding_service=embeddings_service
+)
 rag_service = RAGService(
     embeddings_service=embeddings_service,
     llm_service=LLMService(),
     vector_store=vector_store
 )
+candidate_extraction_service = CandidateExtractionService()
+query_augmentation_service = QueryAugmentationService()
 
 class RequestOrchestrationService:
     """Service for orchestrating complex requests across multiple services."""
@@ -28,6 +38,180 @@ class RequestOrchestrationService:
     def __init__(self):
         """Initialize orchestration service."""
         self.request_cache = {}
+        self.llm_service = LLMService()
+        self.reflection_service = None
+        self.query_router = None
+        self.agent_orchestrator = None
+        self._initialized = False
+    
+    async def initialize_agentic_system(self):
+        """Initialize agent system components (lazy initialization)."""
+        if self._initialized:
+            return
+        
+        try:
+            # Initialize tools and registry
+            await initialize_tools(
+                rag_service=rag_service,
+                recruitment_ai_service=None,  # Will be provided by caller
+                orchestration_service=self,
+            )
+            
+            # Initialize services
+            self.reflection_service = ReflectionService(
+                llm_service=self.llm_service,
+                quality_threshold=0.7,
+            )
+            
+            self.query_router = QueryRouter(
+                llm_service=self.llm_service,
+                confidence_threshold=0.6,
+            )
+            
+            memory_store = get_memory_store(max_users=100)
+            tool_registry = get_tool_registry()
+            
+            self.agent_orchestrator = AgentOrchestrator(
+                llm_service=self.llm_service,
+                tool_registry=tool_registry,
+                memory_store=memory_store,
+                reflection_service=self.reflection_service,
+                max_steps=10,
+                max_retries=2,
+            )
+            
+            self._initialized = True
+            logger.info("Agentic system initialized successfully")
+        
+        except Exception as e:
+            logger.error(f"Failed to initialize agentic system: {str(e)}")
+            self._initialized = False
+            raise
+    
+    async def run_agentic_query(
+        self,
+        user_id: int,
+        query: str,
+        use_agent_if_complex: bool = True,
+        context: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Execute query with intelligent routing and optional agent reasoning.
+        
+        Args:
+            user_id: User ID
+            query: User query
+            use_agent_if_complex: Route to agent if query is complex
+            context: Optional conversation context
+            
+        Returns:
+            Response with answer, routing info, and execution trace
+        """
+        query_start = time.time()
+        request_id = self._generate_request_id()
+        
+        try:
+            # Initialize agent system if needed
+            if not self._initialized:
+                await self.initialize_agentic_system()
+            
+            logger.info(f"[{request_id}] Processing agentic query: {query[:100]}")
+            
+            # Step 0: Clean and normalize query to extract intent
+            cleaned_query = self._clean_query_for_search(query)
+            logger.info(f"[{request_id}] Cleaned query: {cleaned_query}")
+            
+            # Step 0.5: Augment query with domain context and skills
+            augmented_query = query_augmentation_service.augment_query(cleaned_query)
+            logger.info(f"[{request_id}] Augmented query: {augmented_query}")
+            
+            # Use augmented query for retrieval
+            search_query = augmented_query
+            route_decision = await self.query_router.classify_and_route(
+                query=search_query,
+                user_context=context,
+                use_llm=True,
+            )
+            
+            logger.info(f"[{request_id}] Routed to: {route_decision.route_to} "
+                       f"({route_decision.query_type.value}, conf: {route_decision.confidence:.2f})")
+            
+            # Step 2: Complexity analysis
+            complexity = await self.query_router.determine_complexity(search_query)
+            is_complex = complexity.get("is_complex", False)
+            
+            logger.debug(f"[{request_id}] Complexity score: {complexity.get('complexity_score', 0)}")
+            
+            # Step 3: Route to appropriate handler
+            if is_complex and use_agent_if_complex and self.agent_orchestrator:
+                logger.info(f"[{request_id}] Routing to agent (complex query)")
+                result = await self.agent_orchestrator.execute_agent_task(
+                    user_id=user_id,
+                    goal=search_query,
+                    context=context,
+                )
+                
+                return {
+                    "request_id": request_id,
+                    "status": "success",
+                    "query": query,
+                    "answer": result.get("answer", ""),
+                    "route": "agent",
+                    "route_decision": route_decision.to_dict(),
+                    "complexity_analysis": complexity,
+                    "execution_trace": result.get("execution_steps", []),
+                    "reasoning": result.get("reasoning", ""),
+                    "processing_time_ms": (time.time() - query_start) * 1000,
+                }
+            
+            else:
+                # Route to RAG or other simple handlers
+                logger.info(f"[{request_id}] Routing to simple handler ({route_decision.route_to})")
+                
+                result = await self.process_query_request(
+                    user_id=user_id,
+                    query=search_query,
+                    rag_service=rag_service,
+                    llm_service=self.llm_service,
+                    evaluation_service=None,
+                    top_k=route_decision.parameters.get("top_k", 5),
+                    similarity_threshold=route_decision.parameters.get("similarity_threshold", 0.1),
+                )
+                
+                # Extract candidates from source documents if available
+                candidates = []
+                source_docs = result.get("source_documents", [])
+                if source_docs:
+                    # Infer domain from query
+                    domain = self._infer_domain_from_query(query)
+                    candidates = await self.extract_candidates_from_retrieved_docs(
+                        documents=source_docs,
+                        query=query,
+                        domain=domain
+                    )
+                
+                return {
+                    "request_id": request_id,
+                    "status": result.get("status", "success"),
+                    "query": query,
+                    "answer": result.get("answer", ""),
+                    "candidates": [c.model_dump() for c in candidates],  # Convert to dicts
+                    "route": "rag",
+                    "route_decision": route_decision.to_dict(),
+                    "complexity_analysis": complexity,
+                    "evaluation": result.get("evaluation", {}),
+                    "sources": source_docs,
+                    "processing_time_ms": (time.time() - query_start) * 1000,
+                }
+        
+        except Exception as e:
+            logger.error(f"[{request_id}] Agentic query failed: {str(e)}")
+            return {
+                "request_id": request_id,
+                "status": "error",
+                "query": query,
+                "error": str(e),
+                "processing_time_ms": (time.time() - query_start) * 1000,
+            }
     
     # -------------------------------
     # MAIN QUERY FLOW
@@ -36,7 +220,9 @@ class RequestOrchestrationService:
         self,
         user_id: int,
         query: str,
-        document_filters=None,
+        document_filters = {
+    "doctype": "resume"
+},
         prompt_template=None,
         rag_service=None,
         llm_service=None,
@@ -52,8 +238,8 @@ class RequestOrchestrationService:
             # Step 1: Retrieve
             retrieved_docs = await rag_service.retrieve_documents(
                 query=query,
-                user_id=user_id,
-                filters=document_filters,
+                user_id=user_id, 
+                filters=document_filters,#add filter for doctype resume
                 top_k=top_k,
                 similarity_threshold=similarity_threshold,
             )
@@ -164,6 +350,7 @@ class RequestOrchestrationService:
                     {
                         "id": doc.get("id"),
                         "title": doc.get("title"),
+                        "content": doc.get("content") or doc.get("text", ""),
                         "relevance_score": doc.get("score"),
                     }
                     for doc in retrieved_docs
@@ -417,6 +604,7 @@ Answer:
         document_id: int,
         document_path: str,
         rag_service,
+        doctype:str,
     ) -> Dict[str, Any]:
         """Orchestrate document processing and ingestion.
         
@@ -442,6 +630,7 @@ Answer:
                 user_id,
                 documents=chunks,
                 document_id=document_id,
+                doctype=doctype,
             )
             
             # Step 3: Store in vector DB
@@ -509,3 +698,110 @@ Answer:
     
     async def _store_in_vector_db(self, chunks: List[Dict], rag_service) -> List[str]:
         return await rag_service.vector_store.add_documents(chunks)
+    
+    async def extract_candidates_from_retrieved_docs(
+        self,
+        documents: List[Dict[str, Any]],
+        query: str,
+        domain: Optional[str] = None
+    ) -> List[CandidateDetail]:
+        """
+        Extract structured candidate information from retrieved documents.
+        
+        Args:
+            documents: Retrieved documents with content and relevance scores
+            query: Original query for context
+            domain: Domain context (architect, python-dev, etc.)
+            
+        Returns:
+            List of CandidateDetail objects sorted by relevance
+        """
+        try:
+            # Prepare documents for extraction
+            docs_for_extraction = []
+            for doc in documents:
+                # doc_item = {
+                #     'content': doc.get('content', '') or doc.get('text', ''),
+                #     'relevance_score': doc.get('relevance_score', 0.0) or doc.get('similarity_score', 0.0)
+                # }
+                # if doc_item['content']:
+                #     docs_for_extraction.append(doc_item)
+                content = doc.get("content") or doc.get("text")
+
+                if content and content.strip():
+                    docs_for_extraction.append({
+                        "content": content,
+                        "relevance_score": doc.get("relevance_score", 0.0)
+                    })
+            
+            if not docs_for_extraction:
+                return []
+            
+            # Extract candidates from documents
+            candidates = await candidate_extraction_service.extract_candidates_from_documents(
+                documents=docs_for_extraction,
+                query=query,
+                domain=domain
+            )
+            
+            return candidates
+        except Exception as e:
+            logger.error(f"Error extracting candidates: {str(e)}")
+            return []
+    
+    def _infer_domain_from_query(self, query: str) -> Optional[str]:
+        """Infer domain/role from query."""
+        query_lower = query.lower()
+        
+        domain_keywords = {
+            'architect': ['architect', 'architecture', 'system design', 'microservices', 'infrastructure'],
+            'python': ['python', 'django', 'flask', 'fastapi', 'pandas', 'numpy'],
+            'react': ['react', 'frontend', 'ui', 'javascript', 'jsx'],
+            'backend': ['backend', 'node.js', 'api', 'rest', 'graphql'],
+            'java': ['java', 'spring', 'spring boot', 'maven'],
+            'devops': ['devops', 'kubernetes', 'docker', 'aws', 'azure', 'ci/cd'],
+            'database': ['database', 'sql', 'mongodb', 'postgres', 'dynamodb', 'nosql'],
+        }
+        
+        for domain, keywords in domain_keywords.items():
+            if any(kw in query_lower for kw in keywords):
+                return domain
+        
+        return None    
+    def _clean_query_for_search(self, query: str) -> str:
+        """
+        Clean and normalize query to extract meaningful search intent.
+        Removes instructions like "Get names + details + answers back".
+        """
+        if not query:
+            return query
+        
+        # Remove common UI instructions
+        instructions_to_remove = [
+            r'(?:Get|Return|Show|List)\s+(?:names?|details?|answers?|info|information|results?)\s*(?:\+|and)?.*?(?:back|please)?',
+            r'(?:with|in|from)\s+(?:names?|details?|answers?)(?:\s+back)?',
+            r'(?:Get|Return|Provide|Show).{0,50}back',
+            r'\s+(?:please|thanks|thankyou)',
+        ]
+        
+        cleaned = query
+        for pattern in instructions_to_remove:
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+        
+        # Also remove duplicate words
+        words = cleaned.split()
+        seen = set()
+        unique_words = []
+        for word in words:
+            word_lower = word.lower()
+            if word_lower not in seen and word.strip():
+                unique_words.append(word)
+                seen.add(word_lower)
+        
+        cleaned = ' '.join(unique_words).strip()
+        
+        # Ensure we still have meaningful content
+        if not cleaned or len(cleaned) < 5:
+            return query  # Return original if cleaning removed too much
+        
+        return cleaned

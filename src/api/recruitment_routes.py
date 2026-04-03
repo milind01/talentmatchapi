@@ -41,6 +41,11 @@ from src.data.recruitment_schemas import (
     EmailGenerateRequest, EmailResponse, BulkEmailRequest,
     CandidateSummaryResponse,
 )
+from src.application.orchestration_service import RequestOrchestrationService
+from src.ai.rag_service import RAGService
+from src.ai.embeddings_service import EmbeddingsService
+from src.ai.llm_service import LLMService
+from src.services.chroma_store import ChromaVectorStore  # or your actual class
 from src.services.document_extractor import extract_text_from_file
 from src.services.export_service import export_shortlist_excel, export_shortlist_csv
 
@@ -53,7 +58,15 @@ _embeddings_service: Optional[EmbeddingsService] = None
 _recruitment_ai: Optional[RecruitmentAIService] = None
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads/recruitment")
-
+orchestration_service = RequestOrchestrationService()
+embeddings_service = EmbeddingsService()
+rag_service = RAGService(
+    embeddings_service=embeddings_service,
+    llm_service=LLMService(),
+    vector_store=ChromaVectorStore(
+        embedding_service=embeddings_service
+    ),
+)
 
 def get_recruitment_ai() -> RecruitmentAIService:
     """Lazy-init recruitment AI service."""
@@ -78,6 +91,22 @@ async def save_upload(upload_file: UploadFile, subfolder: str) -> str:
         content = await upload_file.read()
         await f.write(content)
     return dest_path
+
+
+def _parse_years_from_string(exp_string: str) -> Optional[float]:
+    """Parse years from experience string like '10+ years' or '8-10 years'."""
+    if not exp_string:
+        return None
+    
+    import re
+    # Try to find first number
+    match = re.search(r'(\d+(?:\.\d+)?)', exp_string)
+    if match:
+        try:
+            return float(match.group(1))
+        except:
+            return None
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -168,7 +197,9 @@ async def bulk_upload_resumes(
     # files: List[UploadFile] = File(..., description="One or more resume files"),
     file: UploadFile = File(...), 
     db: AsyncSession = Depends(get_async_db),
+    # ai: RecruitmentAIService = Depends(get_recruitment_ai),
     ai: RecruitmentAIService = Depends(get_recruitment_ai),
+
 ):
     """
     Upload multiple resumes → parse each with LLM → save candidates to DB.
@@ -192,6 +223,7 @@ async def bulk_upload_resumes(
                 failed.append({"file": upload.filename, "reason": "Text extraction failed"})
                 continue
 
+            # Parse resume with LLM
             parsed = await ai.parse_resume(raw_text)
 
             candidate = Candidate(
@@ -214,6 +246,27 @@ async def bulk_upload_resumes(
             db.add(candidate)
             await db.commit()
             await db.refresh(candidate)
+
+            # RAG INGESTION (KEY FIX)
+            print("🚀 Indexing resume into vector DB...")
+
+            await orchestration_service.process_document_upload(
+                    user_id=user_id,
+                    document_id=candidate.id,  # ✅ unique fake ID
+                    document_path=file_path,                 # ✅ actual resume file
+                    rag_service=rag_service,
+                    doctype= "resume",
+                    # metadata={
+                    #     "doctype": "resume",              # 🔥 IMPORTANT FILTER
+                    #     "jd_id": jd_id,
+                    #     "candidate_id": candidate.id,
+                    #     "file_name": upload.filename,
+                    # }
+                )
+
+            print("✅ Resume indexed successfully")
+
+
             created.append({
                 "id": candidate.id,
                 "file_name": candidate.file_name,

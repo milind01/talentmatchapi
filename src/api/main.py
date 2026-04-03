@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
 
-from src.api import auth_routes, rag_routes, document_routes, template_routes, finetuning_routes
+from src.api import auth_routes, rag_routes, document_routes, template_routes, finetuning_routes, agentic_routes
 from src.core.config import settings
 from src.core.database import init_db, close_db
 from src.api.recruitment_routes import router as recruitment_router
@@ -36,6 +36,7 @@ app.include_router(document_routes.router)
 app.include_router(template_routes.router)
 app.include_router(finetuning_routes.router)
 app.include_router(recruitment_router)
+app.include_router(agentic_routes.router)
 
 
 # Health check endpoint

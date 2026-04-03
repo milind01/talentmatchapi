@@ -24,6 +24,8 @@ class User(Base):
     # Relationships
     documents = relationship("Document", back_populates="owner")
     queries = relationship("Query", back_populates="user")
+    conversation_messages = relationship("ConversationMessage", cascade="all, delete-orphan")
+    agent_tasks = relationship("AgentTask", cascade="all, delete-orphan")
     
     # __table_args__ = (
     #     Index("ix_users_email", "email"),
@@ -206,4 +208,70 @@ class TrainingData(Base):
         Index("ix_training_data_job_id", "job_id"),
         Index("ix_training_data_query_id", "query_id"),
         Index("ix_training_data_type", "data_type"),
+    )
+
+class ConversationMessage(Base):
+    """Conversation messages for agentic system."""
+    __tablename__ = "conversation_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    role = Column(String(50), nullable=False)  # user or assistant
+    content = Column(Text, nullable=False)
+    task_id = Column(String(255), nullable=True, index=True)  # Links to agent task
+    meta_data = Column(JSON, nullable=True)  # Additional context
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    
+    __table_args__ = (
+        Index("ix_conversation_user_created", "user_id", "created_at"),
+        Index("ix_conversation_task", "task_id"),
+    )
+
+
+class AgentTask(Base):
+    """Agent task execution history."""
+    __tablename__ = "agent_tasks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    task_id = Column(String(255), unique=True, index=True)
+    query = Column(Text, nullable=False)
+    route = Column(String(50))  # rag or agent
+    complexity = Column(String(50))  # simple or complex
+    status = Column(String(50), default="pending")  # pending, executing, completed, failed
+    execution_steps = Column(JSON, nullable=True)  # Array of execution steps
+    answer = Column(Text, nullable=True)
+    quality_score = Column(Float, nullable=True)
+    total_time_ms = Column(Integer, default=0)
+    tokens_used = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    
+    __table_args__ = (
+        Index("ix_agent_tasks_user", "user_id"),
+        Index("ix_agent_tasks_status", "status"),
+        Index("ix_agent_tasks_created", "created_at"),
+    )
+
+
+class ToolExecution(Base):
+    """Tool execution logs for debugging."""
+    __tablename__ = "tool_executions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(String(255), ForeignKey("agent_tasks.task_id"), nullable=False, index=True)
+    tool_name = Column(String(255), nullable=False)
+    input_params = Column(JSON, nullable=True)
+    output_result = Column(JSON, nullable=True)
+    status = Column(String(50), default="success")  # success or failed
+    error_message = Column(Text, nullable=True)
+    execution_time_ms = Column(Integer, default=0)
+    retry_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        Index("ix_tool_execution_task", "task_id"),
+        Index("ix_tool_execution_name", "tool_name"),
     )

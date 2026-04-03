@@ -266,3 +266,99 @@ Return ONLY valid JSON with these keys:
         except Exception as e:
             logger.warning(f"Failed to parse LLM JSON response: {e}\nRaw: {text[:200]}")
             return fallback
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # 6. RESUME TRUTH ANALYSIS (Agentic Enhancement)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def analyze_resume_truth(
+        self,
+        resume_text: str,
+        jd_text: str,
+    ) -> Dict[str, Any]:
+        """Analyze resume authenticity, depth, and alignment WITHOUT rejecting candidates.
+        
+        This is a POST-PROCESSOR after scoring that provides deeper insights into:
+        1. Authenticity signals (consistency, specificity)
+        2. Technical depth (concrete examples, metrics)
+        3. Communication quality
+        4. Underrated candidate flags
+        5. Validation suggestions for screening
+        
+        Args:
+            resume_text: Full resume text
+            jd_text: Full job description text
+            
+        Returns:
+            Deep analysis with authenticity signals and insights
+        """
+        prompt = f"""You are analyzing a resume for authenticity, depth, and fit. DO NOT reject candidates.
+Instead, identify:
+1. AUTHENTICITY SIGNALS: consistency, specificity, concrete metrics
+2. TECHNICAL DEPTH: detailed examples, technical terminology used
+3. COMMUNICATION: clarity, organization, professionalism
+4. UNDERRATED SIGNALS: overlooked strengths or potential
+5. VALIDATION SUGGESTIONS: what to ask in interview to verify claims
+
+Resume:
+{resume_text[:3000]}
+
+Job Description:
+{jd_text[:2000]}
+
+Return ONLY valid JSON:
+{{
+    "authenticity": {{
+        "score": 0.85,
+        "signals": [
+            {{"signal": "specific metrics mentioned", "strength": "high"}},
+            {{"signal": "concrete project examples", "strength": "high"}},
+            {{"signal": "consistent timeline", "strength": "medium"}}
+        ],
+        "concerns": []
+    }},
+    "technical_depth": {{
+        "score": 0.75,
+        "evidence": ["Django ORM for 3 years", "Led team of 5", "AWS Lambda expert"],
+        "gaps": ["limited cloud architecture", "no mobile development mentioned"],
+        "demonstrated_expertise": ["backend systems", "database optimization"]
+    }},
+    "communication_quality": {{
+        "score": 0.8,
+        "observations": ["well-organized", "quantifies achievements"],
+        "suggestions": ["add more context to previous role switch"]
+    }},
+    "alignment_with_jd": {{
+        "explicit_matches": ["Python", "Django", "PostgreSQL"],
+        "implicit_matches": ["system design thinking", "team leadership"],
+        "transferable_skills": ["API design", "database knowledge"]
+    }},
+    "underrated_flags": [
+        "Self-taught developer with 5 years solid experience",
+        "Smaller companies show hands-on depth"
+    ],
+    "interview_validation_points": [
+        "Ask about specific architectural decision in ProjectX",
+        "Explore how they handled the team transition",
+        "Technical depth: dive into database optimization examples"
+    ],
+    "overall_assessment": "Strong candidate with proven depth. Recommend technical interview to validate AWS claims.",
+    "recommendation": "INTERVIEW"
+}}
+"""
+        
+        result = await self.llm.generate(prompt, temperature=0.2)
+        return self._parse_json_response(
+            result["text"],
+            fallback={
+                "authenticity": {"score": 0.5, "signals": []},
+                "technical_depth": {"score": 0.5, "evidence": []},
+                "communication_quality": {"score": 0.5},
+                "alignment_with_jd": {"explicit_matches": []},
+                "underrated_flags": [],
+                "interview_validation_points": [],
+                "overall_assessment": "Unable to analyze - manual review recommended",
+                "recommendation": "REVIEW_MANUALLY",
+            }
+        )
+
