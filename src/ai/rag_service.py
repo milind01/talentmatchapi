@@ -65,22 +65,17 @@ class RAGService:
             # Generate query embedding using sentence-transformers
             query_embedding = await self.embeddings_service.embed_text(query)
             
-            # Add user_id filter
+            # Build filters - user_id is optional, only add if explicitly requested
             if filters is None:
                 filters = {}
-                filters["user_id"] = user_id
-
-            # # Build filters properly
-            # conditions = [{"user_id": user_id}]
-
-            # if filters:
-            #     for key, value in filters.items():
-            #         conditions.append({key: value})
-
-            # if len(conditions) == 1:
-            #     where_clause = conditions[0]
-            # else:
-            #     where_clause = {"$and": conditions}
+            else:
+                filters = dict(filters)  # Make a copy to avoid mutating original
+            
+            # Note: user_id filtering should be handled at API level, not retrieval level
+            # This allows queries to find documents from any user (useful for recruitment scenarios)
+            # If you need per-user isolation, handle it in the API layer before calling retrieve_documents
+            
+            logger.info(f"[retrieve] Query filters: {filters}")
             
             # Query vector store with embedding
             results = await self.vector_store.query(
@@ -92,6 +87,9 @@ class RAGService:
              
             )
 
+            print(f"🔍 RAG RETRIEVE: Got {len(results)} raw results from ChromaDB (filters={filters})")
+            for i, r in enumerate(results[:3]):
+                print(f"   [{i}] score={r.get('score', 0):.3f}, meta={r.get('metadata', {})}, content_len={len(r.get('content', ''))}")
             
             # Filter by similarity threshold
             filtered_results = [
@@ -100,6 +98,7 @@ class RAGService:
                if r.get("score", 0) >= threshold 
             ]
             
+            print(f"✅ RAG RETRIEVE: After similarity filter (>{threshold}), got {len(filtered_results)} results")
             logger.info(f"Retrieved {len(filtered_results)} documents for query")
             return filtered_results
             
@@ -170,9 +169,10 @@ Answer:"""
             List of processed chunks with embeddings
         """
         try:
+            print(f"🔄 RAG PROCESS_DOCUMENTS: Processing {len(documents)} chunks with doctype='{doctype}'")
             processed_chunks = []
             
-            for chunk in documents:
+            for chunk_idx, chunk in enumerate(documents):
                 # Create embedding
                 # embedding = await self.vector_store.embed(chunk["content"])
                 embedding = await self.embeddings_service.embed_text(chunk["content"])
@@ -183,19 +183,24 @@ Answer:"""
                     "metadata": {
                         "user_id": user_id, 
                         "document_id": document_id,   # (good to add here also)
-                        "doctype": doctype,           # ✅ KEY ADDITION
-                        "chunk_index": chunk.get("index", 0),
-                        "start_char": chunk.get("start_char", 0),
-                        "end_char": chunk.get("end_char", 0),
+                        "doctype": doctype,           # ✅ KEY ADDITION - SET HERE
+                        "chunk_index": chunk.get("metadata", {}).get("chunk_index", chunk_idx),
+                        "start_char": chunk.get("metadata", {}).get("start_char", 0),
+                        "end_char": chunk.get("metadata", {}).get("end_char", 0),
                     },
                     "embedding": embedding,
                 }
                 
+                if chunk_idx == 0:
+                    print(f"   [Sample] Chunk 0 metadata: {chunk_data['metadata']}")
+                
                 processed_chunks.append(chunk_data)
             
-            logger.info(f"Processed {len(processed_chunks)} chunks")
+            print(f"✅ RAG PROCESS_DOCUMENTS: Processed {len(processed_chunks)} chunks, all with doctype='{doctype}'")
+            logger.info(f"Processed {len(processed_chunks)} chunks with doctype={doctype}")
             return processed_chunks
             
         except Exception as e:
+            print(f"❌ RAG PROCESS_DOCUMENTS ERROR: {str(e)}")
             logger.error(f"Error processing documents: {str(e)}")
             raise

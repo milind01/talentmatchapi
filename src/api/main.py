@@ -4,19 +4,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
 
-from src.api import auth_routes, rag_routes, document_routes, template_routes, finetuning_routes, agentic_routes
+from src.api import (
+    auth_routes, rag_routes, document_routes, template_routes, 
+    finetuning_routes, agentic_routes
+)
+from src.api.recruitment_routes import router as recruitment_router
+from src.api.engagement_routes import router as engagement_router
+from src.api.interview_routes import router as interview_router
+from src.api.hiring_routes import router as hiring_router
+from src.api.agentic_recruitment_routes import router as agentic_recruitment_router
+from src.api.recruiter_routes import router as recruiter_router
 from src.core.config import settings
 from src.core.database import init_db, close_db
-from src.api.recruitment_routes import router as recruitment_router
 
 
 logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="DocAI API",
-    description="AI-powered Document Intelligence Platform with RAG",
-    version="0.1.0",
+    title="TalentMatch API",
+    description="Agentic AI-powered Recruitment Platform",
+    version="2.0.0",
 )
 
 # Configure CORS
@@ -37,6 +45,13 @@ app.include_router(template_routes.router)
 app.include_router(finetuning_routes.router)
 app.include_router(recruitment_router)
 app.include_router(agentic_routes.router)
+
+# New agentic recruitment routes
+app.include_router(engagement_router)
+app.include_router(interview_router)
+app.include_router(hiring_router)
+app.include_router(agentic_recruitment_router)
+app.include_router(recruiter_router)
 
 
 # Health check endpoint

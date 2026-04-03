@@ -114,6 +114,8 @@ async def upload_document(
             elif any(keyword in filename_lower for keyword in ["jd", "job description", "jobdesc"]):
                 doctype = "jd"
         
+        print(f"📄 UPLOAD: filename='{file.filename}', detected doctype='{doctype}'")
+        
         # Create document record with doctype
         document = Document(
             owner_id=user_id,
@@ -149,7 +151,7 @@ async def upload_document(
         logger.info(f"Document uploaded: {document.id} - {doc_title} (doctype={doctype}, {len(chunks)} chunks)")
 
         # ✅ START RAG INGESTION WITH DOCTYPE
-        print(f"🚀 Starting RAG ingestion for doctype={doctype}...")
+        print(f"🚀 UPLOAD: Starting RAG ingestion with document_id={document.id}, doctype={doctype}...")
 
         await orchestration_service.process_document_upload(
             user_id=user_id,

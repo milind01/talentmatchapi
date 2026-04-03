@@ -259,7 +259,10 @@ class RequestOrchestrationService:
                 similarity_threshold=similarity_threshold,
             )
 
-            print(f"🔥 RETRIEVED DOCS: {len(retrieved_docs)} documents with filters {document_filters}")
+            print(f"🔥 STEP 1 - RETRIEVED DOCS: {len(retrieved_docs)} documents with filters {document_filters}")
+            if retrieved_docs:
+                for doc in retrieved_docs[:3]:
+                    print(f"   - Content len: {len(doc.get('content', ''))}, Metadata: {doc.get('metadata', {})}")
             logger.info(f"[query] Retrieved {len(retrieved_docs)} documents")
 
             if not retrieved_docs:
@@ -267,6 +270,11 @@ class RequestOrchestrationService:
                     "request_id": request_id,
                     "status": "no_documents",
                     "message": "No relevant documents found",
+                    "source_documents": [],
+                    "metadata": {
+                        "processing_time_ms": int((time.time() - start_time) * 1000),
+                        "documents_retrieved": 0,
+                    },
                 }
 
             # Step 2: Context
@@ -639,22 +647,25 @@ Answer:
             
             # Step 1: Load and chunk document
             chunks = await self._load_and_chunk_document(document_path)
+            print(f"📝 ORCHESTRATION: Loaded {len(chunks)} chunks from {document_path}")
             logger.info(f"Document chunked into {len(chunks)} chunks")
             
             # Step 2: Process chunks and create embeddings
+            print(f"⚙️  ORCHESTRATION: Calling rag_service.process_documents with doctype='{doctype}'...")
             processed_chunks = await rag_service.process_documents(
                 user_id,
                 documents=chunks,
                 document_id=document_id,
                 doctype=doctype,
             )
+            print(f"✅ ORCHESTRATION: Got {len(processed_chunks)} processed chunks back")
             
             # Step 3: Store in vector DB
             vector_ids = await self._store_in_vector_db(processed_chunks, rag_service)
             
             # ✅ ADD THIS DEBUG BLOCK HERE
             count = await rag_service.vector_store.count()
-            print("VECTOR DB COUNT AFTER INSERT:", count)
+            print(f"📊 ORCHESTRATION: VECTOR DB COUNT AFTER INSERT: {count}")
 
             result = {
                 "document_id": document_id,
@@ -707,7 +718,12 @@ Answer:
             chunk_text = text[i:i + chunk_size]
             chunks.append({
                 "content": chunk_text,
-                "title": f"Chunk {i // chunk_size + 1}"
+                "title": f"Chunk {i // chunk_size + 1}",
+                "metadata": {
+                    "chunk_index": i // chunk_size,
+                    "start_char": i,
+                    "end_char": min(i + chunk_size, len(text))
+                }
             })
 
         return chunks
@@ -733,6 +749,7 @@ Answer:
             List of CandidateDetail objects sorted by relevance
         """
         try:
+            print(f"🎯 EXTRACT_CANDIDATES: Processing {len(documents)} documents, domain={domain}")
             logger.info(f"[extract_candidates] Processing {len(documents)} documents for domain={domain}")
             
             # Prepare documents for extraction
@@ -748,26 +765,33 @@ Answer:
                     }
                     docs_for_extraction.append(doc_item)
                     logger.debug(f"[extract_candidates] Doc {idx}: score={doc_item['relevance_score']}, content_len={len(content)}")
+                    print(f"   [Doc {idx}] score={doc_item['relevance_score']:.3f}, content_len={len(content)}")
                 else:
                     logger.debug(f"[extract_candidates] Skipping doc {idx}: empty content")
+                    print(f"   [Doc {idx}] SKIPPED (empty content)")
             
             if not docs_for_extraction:
+                print(f"❌ EXTRACT_CANDIDATES: No valid documents! Raw count was {len(documents)}")
                 logger.warning(f"[extract_candidates] No valid documents to extract from (had {len(documents)} raw docs)")
                 return []
             
             # Extract candidates from documents
+            print(f"🔄 EXTRACT_CANDIDATES: Calling extraction service with {len(docs_for_extraction)} docs...")
             candidates = await candidate_extraction_service.extract_candidates_from_documents(
                 documents=docs_for_extraction,
                 query=query,
                 domain=domain
             )
             
+            print(f"✅ EXTRACT_CANDIDATES: Got {len(candidates)} candidates back")
             logger.info(f"[extract_candidates] Extracted {len(candidates)} candidates from {len(docs_for_extraction)} documents")
             for candidate in candidates:
                 logger.debug(f"[extract_candidates] Candidate: {candidate.name}, score={candidate.relevance_score}")
+                print(f"   - {candidate.name}: exp={candidate.experience_years}, skills={len(candidate.skills)}")
             
             return candidates
         except Exception as e:
+            print(f"❌ EXTRACT_CANDIDATES: ERROR - {str(e)}")
             logger.error(f"[extract_candidates] Error extracting candidates: {str(e)}", exc_info=True)
             return []
     

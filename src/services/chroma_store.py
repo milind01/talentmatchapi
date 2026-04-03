@@ -48,6 +48,10 @@ class ChromaVectorStore:
             metadatas.append(clean_metadata)
             embeddings.append(chunk["embedding"])
 
+        if len(ids) > 0:
+            print(f"📦 CHROMA ADD_DOCUMENTS: Storing {len(ids)} chunks")
+            print(f"   Sample metadata [0]: {metadatas[0]}")
+
         self.collection.add(
             ids=ids,
             documents=documents,
@@ -55,8 +59,20 @@ class ChromaVectorStore:
             embeddings=embeddings
         )
         # self.client.persist()
-        logger.info(f"Added {len(ids)} documents to vector store")
+        logger.info(f"Added {len(ids)} documents to vector store with doctype metadata")
+        print(f"✅ CHROMA ADD_DOCUMENTS: Stored {len(ids)} chunks with doctype in metadata")
         return ids
+
+    async def count(self):
+        """Get total count of documents in collection"""
+        try:
+            count = self.collection.count()
+            print(f"📊 CHROMA COLLECTION COUNT: {count} total chunks")
+            logger.info(f"ChromaDB collection has {count} documents")
+            return count
+        except Exception as e:
+            logger.error(f"Error counting documents: {str(e)}")
+            return 0
 
     async def query(self, vector, k=5, filters=None):
         """Query vector store with optional filters.
