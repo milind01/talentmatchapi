@@ -45,6 +45,7 @@ class Document(Base):
     file_type = Column(String(50))  # pdf, txt, docx, etc.
     file_size = Column(Integer)  # in bytes
     source_url = Column(String(1000), nullable=True)
+    doctype = Column(String(50), default="general", nullable=False)  # resume, jd, general, etc.
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
     chunks_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -58,6 +59,7 @@ class Document(Base):
     __table_args__ = (
         Index("ix_documents_owner_id", "owner_id"),
         Index("ix_documents_status", "status"),
+        Index("ix_documents_doctype", "doctype"),  # Add index for doctype filtering
     )
 
 

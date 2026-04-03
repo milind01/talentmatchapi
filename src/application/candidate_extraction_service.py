@@ -41,7 +41,7 @@ class CandidateExtractionService:
         try:
             # Check if document has resume-like content
             if not self._is_resume_content(document_content):
-                logger.debug("Document doesn't appear to be resume content, skipping")
+                logger.debug(f"[extract_candidate] Document rejected: Not resume-like content. Content preview: {document_content[:100]}")
                 return None
             
             # Extract name with multiple strategies (in order of preference)
@@ -72,12 +72,12 @@ class CandidateExtractionService:
             
             # Validate name - if we got an obviously invalid name, reject
             if name and self._is_obviously_bad_name(name):
-                logger.debug(f"Extracted name '{name}' is obviously bad, skipping document")
+                logger.warning(f"[extraction] Extracted name '{name}' is obviously bad (junk), skipping document")
                 return None
             
             if not name:
                 # No name found after all strategies
-                logger.debug("No valid name found in document after all extraction strategies")
+                logger.debug("[extraction] No valid name found in document after all extraction strategies")
                 return None
             
             # Extract experience
@@ -113,7 +113,7 @@ class CandidateExtractionService:
         return match.group(1) if match else None
     def _name_from_email(self, email: str) -> Optional[str]:
         """
-        Derive name from email address (lenient approach).
+        Derive name from email address (lenient approach but with validation).
         
         Args:
             email: Email address to extract name from
@@ -126,6 +126,14 @@ class CandidateExtractionService:
 
         try:
             username = email.split('@')[0]
+            
+            # Reject if username is a common junk email prefix
+            junk_usernames = ['document', 'admin', 'test', 'user', 'contact', 'info', 
+                            'support', 'service', 'noreply', 'system', 'app', 'bot',
+                            'root', 'anonymous', 'unknown', 'default']
+            if username.lower() in junk_usernames:
+                logger.debug(f"[_name_from_email] Rejected junk username: {username}")
+                return None
 
             # Remove numbers and special chars except dots/hyphens/underscores
             username = re.sub(r'\d+', '', username)
@@ -133,23 +141,36 @@ class CandidateExtractionService:
             # Split by dot, underscore, or hyphen
             parts = re.split(r'[._-]', username)
 
-            # Keep only valid alphabetic parts
+            # Keep only valid alphabetic parts (2+ chars)
             parts = [p for p in parts if p.isalpha() and len(p) > 1]
 
             if not parts:
+                logger.debug(f"[_name_from_email] No valid parts after processing: {email}")
+                return None
+
+            # Reject if resulting parts contain technical terms
+            technical_terms = ['api', 'dev', 'ops', 'prod', 'qa', 'cfg', 'app', 'sys', 'admin']
+            if any(part.lower() in technical_terms for part in parts):
+                logger.debug(f"[_name_from_email] Contains technical terms: {parts}")
                 return None
 
             # If we have 2+ parts, use first two (first name + last name)
             if len(parts) >= 2:
                 return ' '.join(p.capitalize() for p in parts[:2])
             
-            # If we have only 1 part, still use it as a name (fallback for single-name emails)
-            if len(parts) == 1:
-                return parts[0].capitalize()
+            # If we have only 1 part and it's reasonable length, use it as fallback
+            if len(parts) == 1 and len(parts[0]) > 2:
+                part = parts[0]
+                # Reject single names that look like abbreviations
+                if len(part) <= 3:
+                    logger.debug(f"[_name_from_email] Rejected abbreviation: {part}")
+                    return None
+                return part.capitalize()
             
+            logger.debug(f"[_name_from_email] No valid name derivation from: {email}")
             return None
         except Exception as e:
-            logger.debug(f"Error deriving name from email {email}: {str(e)}")
+            logger.debug(f"[_name_from_email] Error deriving name from email {email}: {str(e)}")
             return None
     
     def _extract_name(self, content: str) -> Optional[str]:
@@ -171,10 +192,12 @@ class CandidateExtractionService:
             r'@|\.com|www\.|https?://',  # Email or URL
             r'^[A-Z]+-\d+',  # Code-like pattern (e.g., -a5708231)
             r'(?:email|phone|address|summary|objective|profile|experience|education|skills)',
-            r'(?:case study|project|featured|section)',
+            r'(?:case study|project|featured|section|document|governance|compliance)',
             r'[🛍️🎯📊💼]',  # Emojis
             r'^\s*-',  # Starts with dash
             r'cross-functional|teams|managed|led|designed',  # Action verbs (not names)
+            r'-compliant|-based|-policy|-framework|-standard',  # Technical compound terms
+            r'OWASP|RFC|ISO|API|REST|HTTP',  # Technical acronyms/standards
         ]
         
         # Strategy 1: Look for the first non-empty line that looks like a name
@@ -228,24 +251,52 @@ class CandidateExtractionService:
     def _is_obviously_bad_name(self, name: str) -> bool:
         """
         Check if name is obviously not a person's name.
-        Much stricter than _is_valid_name - only rejects clear junk.
+        Stricter validation to reject junk like 'GovernanceOWASP-compliant' and 'Document'.
         """
         if not name or len(name) < 2 or len(name) > 150:
             return True
         
-        # Only reject if it has clear bad indicators
+        name_lower = name.lower()
+        
+        # 1. Reject if contains obvious bad keywords
         obviously_bad = [
             'and ', 'or ', 'email', 'phone', '@', 'http', '.com',
             'experience', 'education', 'skills', '---', '===',
-            'case study', 'featured', 'section', '[', ']', '<', '>',
+            'case study', 'featured', 'section', 'document', 'governance',
+            'compliance', 'security', 'architecture', 'framework',
+            '[', ']', '<', '>', '{', '}',
         ]
-        name_lower = name.lower()
         if any(bad in name_lower for bad in obviously_bad):
             return True
         
-        # Check for too many special characters
+        # 2. Reject compound words with hyphens (like OWASP-compliant, governance-policy)
+        if '-' in name:
+            parts = name.split('-')
+            # If any part looks like a technical term or single letter, reject
+            for part in parts:
+                if len(part) < 2 or (len(part) > 1 and part.isupper()):  # Technical term
+                    return True
+        
+        # 3. Reject single common words that are document sections/headers
+        single_words = {'document', 'section', 'page', 'text', 'content', 'header', 
+                       'footer', 'title', 'name', 'summary', 'overview', 'index'}
+        if name_lower in single_words:
+            return True
+        
+        # 4. Check for too many special characters
         special_count = sum(1 for c in name if not c.isalnum() and c != ' ' and c != '-' and c != "'")
-        if special_count > 3:
+        if special_count > 1:  # More strict than before (was 3)
+            return True
+        
+        # 5. Check if name contains too many uppercase letters (like OWASP)
+        uppercase_count = sum(1 for c in name if c.isupper())
+        if uppercase_count > len(name) * 0.5 and len(name) > 5:
+            # More than 50% uppercase for longer names = likely acronym/technical term
+            return True
+        
+        # 6. Check if name looks like a technical term (multiple capital letters throughout)
+        if len(name) > 4 and name.count('-') > 0:
+            # Has hyphens -> likely technical compound (governance-compliant)
             return True
         
         return False
@@ -327,14 +378,28 @@ class CandidateExtractionService:
     def _is_resume_content(self, content: str) -> bool:
         """
         Check if the document content looks like a resume/candidate profile.
-        More lenient - just needs some career-related content.
+        More lenient with resume keywords, but strict about non-resume content.
         """
         if not content or len(content) < 30:
             return False
         
         content_lower = content.lower()
         
-        # Look for resume indicators
+        # REJECT if contains obvious non-resume content
+        non_resume_keywords = [
+            'governance', 'compliance', 'owasp', 'policy', 'procedure', 
+            'guideline', 'framework', 'standard', 'specification',
+            'requirements document', 'technical specification', 'rfc',
+            'whitepaper', 'abstract', 'literature', 'reference',
+            'table of contents', 'appendix', 'glossary',
+        ]
+        
+        non_resume_count = sum(1 for kw in non_resume_keywords if kw in content_lower)
+        if non_resume_count >= 2:  # 2+ non-resume keywords = probably not a resume
+            logger.debug(f"Document rejected: Contains {non_resume_count} non-resume keywords")
+            return False
+        
+        # ACCEPT if contains resume indicators
         resume_keywords = [
             'experience', 'education', 'skills', 'achievement', 'project',
             'professional', 'summary', 'objective', 'qualification',
@@ -346,13 +411,15 @@ class CandidateExtractionService:
         # Count how many resume keywords we find
         keyword_count = sum(1 for kw in resume_keywords if kw in content_lower)
         
-        # Need at least 2 resume-related keywords (more lenient)
-        if keyword_count < 2:
+        # Need at least 3 resume-related keywords (was 2, now stricter)
+        if keyword_count < 3:
+            logger.debug(f"Document rejected: Only {keyword_count} resume keywords found (need 3+)")
             return False
         
         # Check that it's not mostly HTML tags or special characters
         alphanumeric = sum(1 for c in content if c.isalnum() or c.isspace())
-        if alphanumeric < len(content) * 0.4:  # Need 40%+ alphanumeric (more lenient)
+        if alphanumeric < len(content) * 0.4:  # Need 40%+ alphanumeric
+            logger.debug(f"Document rejected: Only {alphanumeric/len(content)*100:.1f}% alphanumeric content")
             return False
         
         return True

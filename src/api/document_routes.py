@@ -70,10 +70,20 @@ async def upload_document(
     file: UploadFile = File(...),
     title: Optional[str] = None,
     description: Optional[str] = None,
+    doctype: str = "general",  # ← ADD: Accept doctype parameter (default: general, can be resume, jd, etc.)
     user_id: int = 1,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Upload a document (supports PDF, TXT, and other text formats)."""
+    """Upload a document (supports PDF, TXT, and other text formats).
+    
+    Args:
+        file: File to upload
+        title: Document title
+        description: Document description
+        doctype: Document type (resume, jd, general, etc.) - defaults to general
+        user_id: User ID
+        db: Database session
+    """
     try:
         # Extract content
         extracted_text = await extract_document_content(file)
@@ -96,7 +106,15 @@ async def upload_document(
         doc_title = title or file.filename or "Untitled"
         file_type = file.filename.split('.')[-1] if file.filename else "unknown"
         
-        # Create document record
+        # Auto-detect doctype if not provided and filename suggests it's a resume
+        if doctype == "general":
+            filename_lower = (file.filename or "").lower()
+            if any(keyword in filename_lower for keyword in ["resume", "cv", "curriculum"]):
+                doctype = "resume"
+            elif any(keyword in filename_lower for keyword in ["jd", "job description", "jobdesc"]):
+                doctype = "jd"
+        
+        # Create document record with doctype
         document = Document(
             owner_id=user_id,
             title=doc_title,
@@ -104,6 +122,7 @@ async def upload_document(
             file_path=f"uploads/{file.filename}",
             file_type=file_type,
             file_size=len(extracted_text),
+            doctype=doctype,  # ← SET DOCTYPE
             status="completed",  # Mark as completed since we extracted text
         )
         db.add(document)
@@ -127,26 +146,26 @@ async def upload_document(
         db.add_all(chunks)
         await db.commit()
 
-        logger.info(f"Document uploaded: {document.id} - {doc_title} ({len(chunks)} chunks)")
+        logger.info(f"Document uploaded: {document.id} - {doc_title} (doctype={doctype}, {len(chunks)} chunks)")
 
-        # ✅ ADD THIS BLOCK
-        print("🚀 Starting RAG ingestion...")
+        # ✅ START RAG INGESTION WITH DOCTYPE
+        print(f"🚀 Starting RAG ingestion for doctype={doctype}...")
 
         await orchestration_service.process_document_upload(
             user_id=user_id,
             document_id=document.id,
-            document_path=document.file_path,  # ⚠️ careful here (see below)
+            document_path=document.file_path,
+            doctype=doctype,  # ← PASS DOCTYPE
             rag_service=rag_service
         )
 
         print("✅ RAG ingestion completed")
         
-        logger.info(f"Document uploaded: {document.id} - {doc_title} ({len(chunks)} chunks)")
-        
         return {
             "id": document.id,
             "filename": file.filename,
             "title": doc_title,
+            "doctype": doctype,  # ← RETURN DOCTYPE
             "status": "completed",
             "file_type": file_type,
             "chunks_count": len(chunks),

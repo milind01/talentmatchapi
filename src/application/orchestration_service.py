@@ -232,9 +232,7 @@ class RequestOrchestrationService:
         self,
         user_id: int,
         query: str,
-        document_filters = {
-    "doctype": "resume"
-},
+        document_filters: Optional[Dict[str, Any]] = None,
         prompt_template=None,
         rag_service=None,
         llm_service=None,
@@ -242,21 +240,27 @@ class RequestOrchestrationService:
         top_k: int = 2,
         similarity_threshold: float = 0.1,
     ):
+        # Set default filters for resume documents if not provided
+        if document_filters is None:
+            document_filters = {"doctype": "resume"}
+        
+        logger.info(f"[query] Using filters: {document_filters}")
 
         try:
             start_time = time.time()
             request_id = self._generate_request_id()
 
-            # Step 1: Retrieve
+            # Step 1: Retrieve with doctype filter
             retrieved_docs = await rag_service.retrieve_documents(
                 query=query,
                 user_id=user_id, 
-                filters=document_filters,#add filter for doctype resume
+                filters=document_filters,  # ← APPLY DOCTYPE FILTER
                 top_k=top_k,
                 similarity_threshold=similarity_threshold,
             )
 
-            print("🔥 RETRIEVED DOCS:", retrieved_docs)
+            print(f"🔥 RETRIEVED DOCS: {len(retrieved_docs)} documents with filters {document_filters}")
+            logger.info(f"[query] Retrieved {len(retrieved_docs)} documents")
 
             if not retrieved_docs:
                 return {

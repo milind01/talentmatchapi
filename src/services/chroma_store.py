@@ -3,6 +3,9 @@ from warnings import filters
 import chromadb
 from chromadb.config import Settings
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ChromaVectorStore:
     def __init__(self, embedding_service, persist_dir="./chroma_db"):
@@ -33,12 +36,13 @@ class ChromaVectorStore:
         for chunk in chunks:
             _id = str(uuid.uuid4())
             clean_metadata = {
-            "document_id": int(chunk["document_id"]),
-            "user_id": int(chunk["metadata"].get("user_id", 0)),
-            "chunk_index": int(chunk["metadata"].get("chunk_index", 0)),
-            "start_char": int(chunk["metadata"].get("start_char", 0)),
-            "end_char": int(chunk["metadata"].get("end_char", 0)),
-        }
+                "document_id": int(chunk["metadata"].get("document_id", 0)),
+                "user_id": int(chunk["metadata"].get("user_id", 0)),
+                "doctype": chunk["metadata"].get("doctype", "general"),  # ← ADD doctype
+                "chunk_index": int(chunk["metadata"].get("chunk_index", 0)),
+                "start_char": int(chunk["metadata"].get("start_char", 0)),
+                "end_char": int(chunk["metadata"].get("end_char", 0)),
+            }
             ids.append(_id)
             documents.append(chunk["content"])
             metadatas.append(clean_metadata)
@@ -51,47 +55,65 @@ class ChromaVectorStore:
             embeddings=embeddings
         )
         # self.client.persist()
+        logger.info(f"Added {len(ids)} documents to vector store")
         return ids
 
     async def query(self, vector, k=5, filters=None):
-        # where = filters or {}
-         # Convert flat filters → Chroma format
-            where_clause = None
-            if filters:
-                conditions = []
-                for key, value in filters.items():
-                    conditions.append({key: value})
+        """Query vector store with optional filters.
+        
+        Args:
+            vector: Query embedding vector
+            k: Number of results to return
+            filters: Dict of filters to apply (e.g., {"doctype": "resume", "user_id": 1})
+        
+        Returns:
+            List of results with content, metadata, and similarity score
+        """
+        # Convert flat filters dict → Chroma where clause format
+        where_clause = None
+        if filters:
+            conditions = []
+            for key, value in filters.items():
+                conditions.append({key: value})
 
-                if len(conditions) == 1:
-                    where_clause = conditions[0]
-                else:
-                    where_clause = {"$and": conditions}
+            if len(conditions) == 1:
+                where_clause = conditions[0]
+            else:
+                where_clause = {"$and": conditions}
+            
+            logger.debug(f"[chroma_query] Applying filters: {filters}")
+            logger.debug(f"[chroma_query] Where clause: {where_clause}")
 
-                results = self.collection.query(
-                    query_embeddings=[vector],
-                    n_results=k,
-                    # where=where_clause
-                )
+        # Query with optional where clause
+        results = self.collection.query(
+            query_embeddings=[vector],
+            n_results=k,
+            where=where_clause,  # ← APPLY FILTERS (previously commented out)
+        )
 
-                print("RAW CHROMA RESULTS:", results)
-          
-                output = []
+        print(f"RAW CHROMA RESULTS (k={k}, filters={filters}):", {
+            "num_docs": len(results.get("documents", [[]])[0]),
+            "num_metadatas": len(results.get("metadatas", [[]])[0]),
+        })
+  
+        output = []
 
-                docs = results.get("documents", [[]])[0]
-                metas = results.get("metadatas", [[]])[0]
-                distances = results.get("distances", [[]])[0]
+        docs = results.get("documents", [[]])[0]
+        metas = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
 
-                for i in range(len(docs)):
-                        if not docs[i]:   # 🔥 skip empty
-                            continue
+        for i in range(len(docs)):
+            if not docs[i]:   # skip empty
+                continue
 
-                        output.append({
-                            "content": docs[i],
-                            "metadata": metas[i],
-                            "score": 1 - distances[i]
-                        })
+            output.append({
+                "content": docs[i],
+                "metadata": metas[i],
+                "score": 1 - distances[i]
+            })
 
-                return output
+        logger.debug(f"[chroma_query] Returned {len(output)} results after filtering")
+        return output
             # output = []
             # for i in range(len(results["ids"][0])):
 
