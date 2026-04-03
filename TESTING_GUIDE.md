@@ -310,3 +310,31 @@ After E2E tests pass:
    ab -n 1000 -c 10 http://localhost:8000/health
    ```
 
+{
+  "status": "success",
+  "route": "rag",
+  "answer": "This information is not available in the provided context. The context does not mention any specific work on SpringBoot or the number of years of experience related to it, nor does it provide names or project names that include this detail.",
+  "candidates": [
+    {
+      "name": "GovernanceOWASP-compliant",
+      "total_experience": "Not specified",
+      "relevant_experience": "Not specified",
+      "summary": "Professional with Not specified.",
+      "key_projects": [],
+      "relevance_score": 0.1493699550628662,
+      "additional_details": {}
+    },
+    {
+      "name": "Document",
+      "total_experience": "Not specified",
+      "relevant_experience": "Not specified",
+      "summary": "Professional with Not specified.",
+      "key_projects": [],
+      "relevance_score": 0.14896643161773682,
+      "additional_details": {}
+    }
+  ],
+  "execution_trace": [],
+  "quality_score": null,
+  "total_time_ms": 76578
+}
