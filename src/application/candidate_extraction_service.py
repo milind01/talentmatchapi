@@ -44,28 +44,40 @@ class CandidateExtractionService:
                 logger.debug("Document doesn't appear to be resume content, skipping")
                 return None
             
-            # # Extract name - be more lenient
-            # name = self._extract_name(document_content)
+            # Extract name with multiple strategies (in order of preference)
+            name = None
             
-            # # Validate name - if we got an obviously invalid name, reject
-            # if name and self._is_obviously_bad_name(name):
-            #     logger.debug(f"Extracted name '{name}' is obviously bad, skipping document")
-            #     return None
+            # Strategy 1: Try standard name extraction from document
+            name = self._extract_name(document_content)
+            if name:
+                logger.debug(f"[extraction] Strategy 1 (standard): Found name '{name}'")
             
-            # # If no name found, try harder before giving up
-            # if not name:
-            #     name = self._extract_name_aggressive(document_content, query)
-            
-            # if not name:
-            #     # No name found at all, skip this document
-            #     logger.debug("No valid name found in document")
-            #     return None
-
-            email = self._extract_email(document_content)
-            name = self._name_from_email(email) if email else None
-
+            # Strategy 2: If not found, try aggressive extraction
             if not name:
-                logger.debug("Email not found or name couldn't be derived")
+                name = self._extract_name_aggressive(document_content, query)
+                if name:
+                    logger.debug(f"[extraction] Strategy 2 (aggressive): Found name '{name}'")
+            
+            # Strategy 3: Try deriving from email
+            if not name:
+                email = self._extract_email(document_content)
+                if email:
+                    name = self._name_from_email(email)
+                    if name:
+                        logger.debug(f"[extraction] Strategy 3 (email): Derived name '{name}' from email '{email}'")
+                    else:
+                        logger.debug(f"[extraction] Strategy 3 (email): Found email '{email}' but couldn't derive name")
+                else:
+                    logger.debug(f"[extraction] Strategy 3 (email): No email found")
+            
+            # Validate name - if we got an obviously invalid name, reject
+            if name and self._is_obviously_bad_name(name):
+                logger.debug(f"Extracted name '{name}' is obviously bad, skipping document")
+                return None
+            
+            if not name:
+                # No name found after all strategies
+                logger.debug("No valid name found in document after all extraction strategies")
                 return None
             
             # Extract experience
@@ -100,24 +112,45 @@ class CandidateExtractionService:
         match = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]+)', content)
         return match.group(1) if match else None
     def _name_from_email(self, email: str) -> Optional[str]:
+        """
+        Derive name from email address (lenient approach).
+        
+        Args:
+            email: Email address to extract name from
+            
+        Returns:
+            Extracted name or None if not possible
+        """
         if not email:
             return None
 
-        username = email.split('@')[0]
+        try:
+            username = email.split('@')[0]
 
-        # Remove numbers
-        username = re.sub(r'\d+', '', username)
+            # Remove numbers and special chars except dots/hyphens/underscores
+            username = re.sub(r'\d+', '', username)
+            
+            # Split by dot, underscore, or hyphen
+            parts = re.split(r'[._-]', username)
 
-        # Split by dot / underscore
-        parts = re.split(r'[._]', username)
+            # Keep only valid alphabetic parts
+            parts = [p for p in parts if p.isalpha() and len(p) > 1]
 
-        # Keep only valid name-like parts
-        parts = [p for p in parts if p.isalpha()]
+            if not parts:
+                return None
 
-        if len(parts) >= 2:
-            return ' '.join(p.capitalize() for p in parts[:2])
-
-        return None
+            # If we have 2+ parts, use first two (first name + last name)
+            if len(parts) >= 2:
+                return ' '.join(p.capitalize() for p in parts[:2])
+            
+            # If we have only 1 part, still use it as a name (fallback for single-name emails)
+            if len(parts) == 1:
+                return parts[0].capitalize()
+            
+            return None
+        except Exception as e:
+            logger.debug(f"Error deriving name from email {email}: {str(e)}")
+            return None
     
     def _extract_name(self, content: str) -> Optional[str]:
         """
@@ -570,20 +603,28 @@ class CandidateExtractionService:
             List of CandidateDetail objects sorted by relevance (only valid candidates)
         """
         candidates = []
+        logger.info(f"Processing {len(documents)} documents for candidate extraction (domain={domain})")
         
-        for doc in documents:
+        for idx, doc in enumerate(documents):
             content = doc.get('content', '') or doc.get('text', '')
             relevance = doc.get('relevance_score', 0.0)
             
             if content:
+                logger.debug(f"[Doc {idx}] Attempting extraction: score={relevance}, content_len={len(content)}")
                 candidate = await self.extract_candidate_details(
                     content, query, relevance, domain
                 )
                 # Only add valid candidates (with extracted name)
                 if candidate is not None:
                     candidates.append(candidate)
+                    logger.info(f"[Doc {idx}] ✓ Extracted: {candidate.name}")
+                else:
+                    logger.debug(f"[Doc {idx}] ✗ Skipped: No valid candidate extracted")
+            else:
+                logger.debug(f"[Doc {idx}] Skipped: Empty content")
         
         # Sort by relevance score (highest first)
         candidates.sort(key=lambda c: c.relevance_score, reverse=True)
         
+        logger.info(f"Final extraction result: {len(candidates)} candidates from {len(documents)} documents")
         return candidates

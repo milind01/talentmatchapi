@@ -150,11 +150,23 @@ class RequestOrchestrationService:
                     context=context,
                 )
                 
+                # Try to extract candidates from agent result if it contains documents
+                candidates = []
+                agent_docs = result.get("source_documents", [])
+                if agent_docs:
+                    domain = self._infer_domain_from_query(query)
+                    candidates = await self.extract_candidates_from_retrieved_docs(
+                        documents=agent_docs,
+                        query=query,
+                        domain=domain
+                    )
+                
                 return {
                     "request_id": request_id,
                     "status": "success",
                     "query": query,
                     "answer": result.get("answer", ""),
+                    "candidates": [c.model_dump() for c in candidates],
                     "route": "agent",
                     "route_decision": route_decision.to_dict(),
                     "complexity_analysis": complexity,
@@ -351,7 +363,7 @@ class RequestOrchestrationService:
                         "id": doc.get("id"),
                         "title": doc.get("title"),
                         "content": doc.get("content") or doc.get("text", ""),
-                        "relevance_score": doc.get("score"),
+                        "relevance_score": doc.get("score") or doc.get("relevance_score", 0.0),
                     }
                     for doc in retrieved_docs
                 ],
@@ -717,24 +729,26 @@ Answer:
             List of CandidateDetail objects sorted by relevance
         """
         try:
+            logger.info(f"[extract_candidates] Processing {len(documents)} documents for domain={domain}")
+            
             # Prepare documents for extraction
             docs_for_extraction = []
-            for doc in documents:
-                # doc_item = {
-                #     'content': doc.get('content', '') or doc.get('text', ''),
-                #     'relevance_score': doc.get('relevance_score', 0.0) or doc.get('similarity_score', 0.0)
-                # }
-                # if doc_item['content']:
-                #     docs_for_extraction.append(doc_item)
+            for idx, doc in enumerate(documents):
                 content = doc.get("content") or doc.get("text")
+                relevance_score = doc.get("relevance_score") or doc.get("score", 0.0)
 
                 if content and content.strip():
-                    docs_for_extraction.append({
+                    doc_item = {
                         "content": content,
-                        "relevance_score": doc.get("relevance_score", 0.0)
-                    })
+                        "relevance_score": float(relevance_score) if relevance_score else 0.0
+                    }
+                    docs_for_extraction.append(doc_item)
+                    logger.debug(f"[extract_candidates] Doc {idx}: score={doc_item['relevance_score']}, content_len={len(content)}")
+                else:
+                    logger.debug(f"[extract_candidates] Skipping doc {idx}: empty content")
             
             if not docs_for_extraction:
+                logger.warning(f"[extract_candidates] No valid documents to extract from (had {len(documents)} raw docs)")
                 return []
             
             # Extract candidates from documents
@@ -744,9 +758,13 @@ Answer:
                 domain=domain
             )
             
+            logger.info(f"[extract_candidates] Extracted {len(candidates)} candidates from {len(docs_for_extraction)} documents")
+            for candidate in candidates:
+                logger.debug(f"[extract_candidates] Candidate: {candidate.name}, score={candidate.relevance_score}")
+            
             return candidates
         except Exception as e:
-            logger.error(f"Error extracting candidates: {str(e)}")
+            logger.error(f"[extract_candidates] Error extracting candidates: {str(e)}", exc_info=True)
             return []
     
     def _infer_domain_from_query(self, query: str) -> Optional[str]:
