@@ -1,5 +1,5 @@
 """Candidate Engagement Routes - Communication channels."""
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging

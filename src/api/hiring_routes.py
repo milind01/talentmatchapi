@@ -1,5 +1,5 @@
 """Hiring Decision Routes - AI-assisted hiring decisions and analytics."""
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func

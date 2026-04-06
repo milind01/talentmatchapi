@@ -30,7 +30,7 @@ class RECRUITERAgent:
         jd_id: int,
         search_query: str,
         engagement_strategy: str = "aggressive",  # aggressive, balanced, conservative
-        user_id: int  # ✅ FIXED: Now required (was: user_id: int = 1)
+        user_id: int = 1  # ✅ FIXED: Dynamic user_id (default fallback: 1)
     ) -> Dict[str, Any]:
         """
         Start a complete recruitment campaign orchestrated by recruiter agent.
@@ -228,7 +228,7 @@ class RecruitmentOrchestrator:
         jd_id: int,
         auto_search: bool = True,
         auto_engage: bool = False,
-        user_id: int  # ✅ FIXED: Now required (was: user_id: int = 1)
+        user_id: int = 1  # ✅ FIXED: Dynamic user_id (default fallback: 1)
     ) -> Dict[str, Any]:
         """
         Post a job and optionally start automated recruitment.

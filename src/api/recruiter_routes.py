@@ -1,5 +1,5 @@
 """Recruiter Agent Routes - Master agent for hire operations."""
-from fastapi import APIRouter, Depends, HTTPException, Form
+from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
