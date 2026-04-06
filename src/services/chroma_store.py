@@ -4,6 +4,7 @@ import chromadb
 from chromadb.config import Settings
 import uuid
 import logging
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -112,40 +113,51 @@ class ChromaVectorStore:
             "num_metadatas": len(results.get("metadatas", [[]])[0]),
         })
   
+        # output = []
+
+        # docs = results.get("documents", [[]])[0]
+        # metas = results.get("metadatas", [[]])[0]
+        # distances = results.get("distances", [[]])[0]
+
+        # for i in range(len(docs)):
+        #     if not docs[i]:   # skip empty
+        #         continue
+
+        #     output.append({
+        #         "content": docs[i],
+        #         "metadata": metas[i],
+        #         # "score": 1 - distances[i]
+        #         "similarity" : 1 - (distances[i] / 2)
+        #     })
+
+        # logger.debug(f"[chroma_query] Returned {len(output)} results after filtering")
+        # return output
+
         output = []
+        
+        for i in range(len(results["ids"][0])):
+                if not results["documents"][0][i]:
+                    continue
 
-        docs = results.get("documents", [[]])[0]
-        metas = results.get("metadatas", [[]])[0]
-        distances = results.get("distances", [[]])[0]
 
-        for i in range(len(docs)):
-            if not docs[i]:   # skip empty
-                continue
+                distance = results["distances"][0][i]
 
-            output.append({
-                "content": docs[i],
-                "metadata": metas[i],
-                "score": 1 - distances[i]
-            })
+                similarity = 1 - (distance/2)   # ✅ FIX
 
-        logger.debug(f"[chroma_query] Returned {len(output)} results after filtering")
+                if distance > 1.0:
+                 continue
+
+                output.append({
+                                "id": results["ids"][0][i],
+                                "content": results["documents"][0][i],
+                                # "score": results["distances"][0][i],
+                                "score": similarity,
+                                "metadata": results["metadatas"][0][i],
+                            })        
+
         return output
-            # output = []
-            # for i in range(len(results["ids"][0])):
 
-            #     distance = results["distances"][0][i]
-
-            #     similarity = 1 - (distance/2)   # ✅ FIX
-
-            #     output.append({
-            #         "id": results["ids"][0][i],
-            #         "content": results["documents"][0][i],
-            #         # "score": results["distances"][0][i],
-            #         "score": similarity,
-            #         "metadata": results["metadatas"][0][i],
-            #     })
-
-            # return output
-    
+       
+            
     async def count(self):
         return self.collection.count()

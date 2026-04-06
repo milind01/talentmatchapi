@@ -9,7 +9,7 @@ from src.ai.recruiter_agent import RECRUITERAgent, RecruitmentOrchestrator
 from src.ai.agents import AgentTeam
 from src.ai.llm_service import LLMService
 from src.application.candidate_memory_service import CandidateMemoryService
-from src.application.recruitment_ai_service import RecruitmentAIService
+from src.ai.recruitment_ai_service import RecruitmentAIService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/recruiter", tags=["recruiter"])

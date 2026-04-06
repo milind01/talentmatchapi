@@ -16,8 +16,8 @@ class RAGService:
         vector_store,
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
-        top_k: int = 5,
-        similarity_threshold: float = 0.0,
+        top_k: int = 10,
+        similarity_threshold: float = 0.45,
     ):
         """Initialize RAG service.
         
@@ -68,8 +68,11 @@ class RAGService:
             # Build filters - user_id is optional, only add if explicitly requested
             if filters is None:
                 filters = {}
-            else:
-                filters = dict(filters)  # Make a copy to avoid mutating original
+            # else:
+            #     filters = dict(filters)  # Make a copy to avoid mutating original
+
+            filters = dict(filters)
+            filters["user_id"] = user_id   # ✅ FORCE FILTER
             
             # Note: user_id filtering should be handled at API level, not retrieval level
             # This allows queries to find documents from any user (useful for recruitment scenarios)
@@ -98,6 +101,10 @@ class RAGService:
                if r.get("score", 0) >= threshold 
             ]
             
+            if not filtered_results:
+                logger.info(f"[retrieve] No results above threshold {threshold}, returning empty")
+                return []
+
             print(f"✅ RAG RETRIEVE: After similarity filter (>{threshold}), got {len(filtered_results)} results")
             logger.info(f"Retrieved {len(filtered_results)} documents for query")
             return filtered_results

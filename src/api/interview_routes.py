@@ -22,7 +22,12 @@ def get_llm_service() -> LLMService:
     return LLMService()
 
 
-def get_memory_service(db: AsyncSession) -> CandidateMemoryService:
+# def get_memory_service(db: AsyncSession) -> CandidateMemoryService:
+#     return CandidateMemoryService(db)
+
+def get_memory_service(
+    db: AsyncSession = Depends(get_async_db)
+) -> CandidateMemoryService:
     return CandidateMemoryService(db)
 
 

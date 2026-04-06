@@ -291,7 +291,7 @@ async def initialize_tools(
             ToolParameter("top_k", ToolInputType.INTEGER, "Number of results to return", required=False, default=5),
             ToolParameter("similarity_threshold", ToolInputType.FLOAT, "Minimum similarity score", required=False, default=0.1),
         ]),
-        execute_fn=lambda query, user_id, top_k=5, similarity_threshold=0.1: 
+        execute_fn=lambda query, user_id, top_k=10, similarity_threshold=0.05: 
             rag_service.retrieve_documents(
                 query=query,
                 user_id=user_id,

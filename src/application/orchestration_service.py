@@ -1,4 +1,5 @@
 """Request orchestration service."""
+from collections import defaultdict
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import logging
@@ -185,16 +186,52 @@ class RequestOrchestrationService:
                     rag_service=rag_service,
                     llm_service=self.llm_service,
                     evaluation_service=None,
-                    top_k=route_decision.parameters.get("top_k", 5),
-                    similarity_threshold=route_decision.parameters.get("similarity_threshold", 0.1),
+                    top_k=route_decision.parameters.get("top_k", 10),
+                    similarity_threshold=route_decision.parameters.get("similarity_threshold", 0.05),
                 )
                 
-                # Extract candidates from source documents if available
-                candidates = []
+                # # Extract candidates from source documents if available
+                # candidates = []
+                # source_docs = result.get("source_documents", [])
+                # if source_docs:
+                #     # Infer domain from query
+                #     # domain = self._infer_domain_from_query(query)
+                #     domain = None
+                #     candidates = await self.extract_candidates_from_retrieved_docs(
+                #         documents=source_docs,
+                #         query=query,
+                #         domain=domain
+                #     )
+
+                # ✅ ADD: Check if LLM found no relevant results before extracting candidates
+                answer = result.get("answer", "")
+                NO_MATCH_PHRASES = [
+                    "not available in the provided context",
+                    "not mentioned in the provided context",
+                    "does not mention any",
+                    "neither of the resumes",
+                    "no candidate",
+                    "no experience with",
+                    "cannot find",
+                    "not found in the context",
+                    "no relevant",
+                    "no information about",
+                ]
+
+                answer_lower = answer.lower()
+                has_no_match = any(phrase in answer_lower for phrase in NO_MATCH_PHRASES)
+
+                # ✅ Also check if source_documents is empty (filtered out by DOC_RELEVANCE_THRESHOLD)
                 source_docs = result.get("source_documents", [])
-                if source_docs:
-                    # Infer domain from query
-                    domain = self._infer_domain_from_query(query)
+                no_source_docs = len(source_docs) == 0
+
+                candidates = []
+                if has_no_match or no_source_docs:
+                    print(f"🚫 Skipping candidate extraction — "
+                        f"has_no_match={has_no_match}, no_source_docs={no_source_docs}")
+                    logger.info(f"[{request_id}] No relevant candidates for query: {query[:80]}")
+                else:
+                    domain = None
                     candidates = await self.extract_candidates_from_retrieved_docs(
                         documents=source_docs,
                         query=query,
@@ -225,9 +262,7 @@ class RequestOrchestrationService:
                 "processing_time_ms": (time.time() - query_start) * 1000,
             }
     
-    # -------------------------------
-    # MAIN QUERY FLOW
-    # -------------------------------
+
     async def process_query_request(
         self,
         user_id: int,
@@ -237,13 +272,12 @@ class RequestOrchestrationService:
         rag_service=None,
         llm_service=None,
         evaluation_service=None,
-        top_k: int = 2,
-        similarity_threshold: float = 0.1,
+        top_k: int = 10,
+        similarity_threshold: float = 0.05,
     ):
-        # Set default filters for resume documents if not provided
         if document_filters is None:
             document_filters = {"doctype": "resume"}
-        
+
         logger.info(f"[query] Using filters: {document_filters}")
 
         try:
@@ -253,8 +287,8 @@ class RequestOrchestrationService:
             # Step 1: Retrieve with doctype filter
             retrieved_docs = await rag_service.retrieve_documents(
                 query=query,
-                user_id=user_id, 
-                filters=document_filters,  # ← APPLY DOCTYPE FILTER
+                user_id=user_id,
+                filters=document_filters,
                 top_k=top_k,
                 similarity_threshold=similarity_threshold,
             )
@@ -277,81 +311,153 @@ class RequestOrchestrationService:
                     },
                 }
 
-            # Step 2: Context
-            context = await self._prepare_context(retrieved_docs)
+            # -------------------------------------------------------
+            # Group chunks by document_id and fetch full documents
+            # -------------------------------------------------------
+            grouped = defaultdict(list)
+            for doc in retrieved_docs:
+                doc_id = doc.get("metadata", {}).get("document_id")
+                if not doc_id:
+                    continue
+                grouped[doc_id].append(doc)
 
-            print("✅ FINAL CONTEXT:", context[:300])
+            print(f"🧠 Grouped docs: {list(grouped.keys())}")
 
-            # Step 3: Answer - FIX: Properly extract text from answer_result
+            # FIX Bug 3: proper early-return when no document_ids found
+            if not grouped:
+                print("❌ No document_id found in metadata")
+                return {
+                    "request_id": request_id,
+                    "status": "no_documents",
+                    "message": "Retrieved documents have no document_id in metadata",
+                    "source_documents": [],
+                    "metadata": {
+                        "processing_time_ms": int((time.time() - start_time) * 1000),
+                        "documents_retrieved": len(retrieved_docs),
+                    },
+                }
+
+            # -------------------------------------------------------
+            # FIX Bug 1: Build documents_for_extraction OUTSIDE the loop
+            # -------------------------------------------------------
+            documents_for_extraction = []
+
+            DOC_RELEVANCE_THRESHOLD = 0.5  # tune this; 0.500 = no match, 0.958 = strong match
+
+            for doc_id, chunks in grouped.items():
+                scores = [x.get("score", 0) for x in chunks]
+                avg_score = sum(scores) / len(scores) if scores else 0.0
+
+            # ✅ ADD THIS: skip documents that didn't actually match the query
+                if avg_score < DOC_RELEVANCE_THRESHOLD:
+                    print(f"⏭️ Skipping doc_id={doc_id} — avg_score={avg_score:.3f} below threshold {DOC_RELEVANCE_THRESHOLD}")
+                    logger.info(f"[query] Skipping document_id={doc_id}, avg_score={avg_score:.3f} below relevance threshold")
+                    continue
+                # Fetch the complete document from ChromaDB by document_id
+                try:
+                    full_doc = rag_service.vector_store.collection.get(
+                        where={"document_id": int(doc_id)}
+                    )
+                    full_text = " ".join(full_doc.get("documents", []))
+                except Exception as e:
+                    logger.warning(f"Could not fetch full doc for {doc_id}: {e}")
+                    # Fall back to concatenating the retrieved chunks
+                    full_text = " ".join(
+                        c.get("content", "") for c in sorted(chunks, key=lambda x: x.get("metadata", {}).get("chunk_index", 0))
+                    )
+
+                if not full_text.strip():
+                    logger.warning(f"Empty text for document_id={doc_id}, skipping")
+                    continue
+
+                documents_for_extraction.append({
+                    "content": full_text,   
+                    "relevance_score": avg_score,
+                    "metadata": {
+                        "document_id": doc_id,
+                        "raw_chunks": chunks   # 👈 ADD THIS HERE
+                    },
+                })
+
+            print(f"📄 Prepared {len(documents_for_extraction)} UNIQUE resumes")
+
+            if not documents_for_extraction:
+                return {
+                    "request_id": request_id,
+                    "status": "no_documents",
+                    "message": "Could not build content for any retrieved documents",
+                    "source_documents": [],
+                    "metadata": {
+                        "processing_time_ms": int((time.time() - start_time) * 1000),
+                        "documents_retrieved": len(retrieved_docs),
+                    },
+                }
+
+            # -------------------------------------------------------
+            # FIX Bug 1 (cont.): Build context OUTSIDE the loop
+            # top_docs sorted by relevance, each capped at 3000 chars
+            # -------------------------------------------------------
+            top_docs = sorted(
+                documents_for_extraction,
+                key=lambda x: x["relevance_score"],
+                reverse=True,
+            )[:5]  # up from 3 — more resumes = better recall
+
+            context = "\n\n---\n\n".join(
+                [
+                    f"[Resume document_id={doc['metadata']['document_id']}]\n{doc['content'][:4000]}"
+                    for doc in top_docs
+                ]
+            )
+
+            print(f"✅ FINAL CONTEXT length: {len(context)} chars, covering {len(top_docs)} resumes")
+            print(f"   Context preview: {context[:300]}")
+
+            # Step 3: Generate answer from LLM
             prompt = await self._build_prompt(query, context)
             answer_result = await llm_service.generate(prompt=prompt)
 
-            # FIX: Handle different response formats
             if isinstance(answer_result, dict):
                 answer = answer_result.get("text", "") or answer_result.get("content", "")
             else:
                 answer = str(answer_result)
-            
-            # Ensure answer is not empty
+
             if not answer or answer.strip() == "":
                 logger.warning("LLM returned empty answer, using fallback")
                 answer = "Unable to generate answer from the context provided."
 
             print(f"📝 GENERATED ANSWER: {answer[:200]}")
 
-            # -------------------------------
-            # LLM Evaluation - with error handling
-            # -------------------------------
+            # LLM Evaluation
             llm_eval = {}
             try:
-                llm_eval = await self.evaluate_with_llm(
-                    query, answer, context, llm_service
-                )
+                llm_eval = await self.evaluate_with_llm(query, answer, context, llm_service)
             except Exception as e:
                 logger.error(f"LLM evaluation failed: {str(e)}")
                 llm_eval = {
-                    "relevance": 5,
-                    "correctness": 5,
-                    "completeness": 5,
-                    "clarity": 5,
-                    "overall": 5.0,
-                    "issues": ["Evaluation failed"],
-                    "suggestions": []
+                    "relevance": 5, "correctness": 5, "completeness": 5,
+                    "clarity": 5, "overall": 5.0,
+                    "issues": ["Evaluation failed"], "suggestions": [],
                 }
 
-            # Calculate similarity with error handling
             similarity = 0
             if evaluation_service:
                 try:
-                    similarity = await evaluation_service.calculate_similarity(
-                        query, answer
-                    )
+                    similarity = await evaluation_service.calculate_similarity(query, answer)
                 except Exception as e:
                     logger.error(f"Similarity calculation failed: {str(e)}")
-                    similarity = 0.5  # Default moderate similarity
+                    similarity = 0.5
 
-            overall_score = (
-                0.7 * llm_eval.get("overall", 5)
-                + 0.3 * similarity * 10
-            )
-
+            overall_score = 0.7 * llm_eval.get("overall", 5) + 0.3 * similarity * 10
             verdict = self.get_verdict(overall_score)
 
-            # -------------------------------
-            # Insights - with error handling
-            # -------------------------------
+            # Insights
             insights = {}
             try:
-                insights = await self.generate_insights(
-                    query, answer, context, llm_service
-                )
+                insights = await self.generate_insights(query, answer, context, llm_service)
             except Exception as e:
                 logger.error(f"Insights generation failed: {str(e)}")
-                insights = {
-                    "summary": answer[:200],
-                    "key_points": [],
-                    "action_items": []
-                }
+                insights = {"summary": answer[:200], "key_points": [], "action_items": []}
 
             processing_time_ms = int((time.time() - start_time) * 1000)
 
@@ -360,36 +466,35 @@ class RequestOrchestrationService:
                 "status": "success",
                 "query": query,
                 "answer": answer,
-
                 "insights": insights,
-
                 "evaluation": {
                     "score": overall_score,
                     "verdict": verdict,
                     "details": llm_eval,
                     "similarity": similarity,
                 },
-
+                # FIX: source_documents comes from documents_for_extraction
+                # so extract_candidates_from_retrieved_docs gets proper content
                 "source_documents": [
                     {
-                        "id": doc.get("id"),
-                        "title": doc.get("title"),
-                        "content": doc.get("content") or doc.get("text", ""),
-                        "relevance_score": doc.get("score") or doc.get("relevance_score", 0.0),
+                        "id": doc.get("metadata", {}).get("document_id"),
+                        "title": f"Resume {doc.get('metadata', {}).get('document_id')}",
+                        "content": doc.get("content", ""),
+                        "relevance_score": doc.get("relevance_score", 0.0),
                     }
-                    for doc in retrieved_docs
+                    for doc in documents_for_extraction
                 ],
-
                 "metadata": {
                     "processing_time_ms": processing_time_ms,
                     "documents_retrieved": len(retrieved_docs),
+                    "unique_documents": len(documents_for_extraction),
                 },
             }
 
         except Exception as e:
-            logger.error(f"Error: {str(e)}")
+            logger.error(f"Error in process_query_request: {str(e)}", exc_info=True)
             raise
-
+        
     # -------------------------------
     # CONTEXT FIXED (VERY IMPORTANT)
     # -------------------------------
@@ -711,20 +816,46 @@ Answer:
             else:
                 raise ValueError(f"Could not decode file: {document_path}")
 
-        # Chunk the text
-        chunk_size = 500
+        # # Chunk the text
+        # chunk_size = 500
+        # chunks = []
+        # for i in range(0, len(text), chunk_size):
+        #     chunk_text = text[i:i + chunk_size]
+        #     chunks.append({
+        #         "content": chunk_text,
+        #         "title": f"Chunk {i // chunk_size + 1}",
+        #         "metadata": {
+        #             "chunk_index": i // chunk_size,
+        #             "start_char": i,
+        #             "end_char": min(i + chunk_size, len(text))
+        #         }
+        #     })
+
+        # return chunks
+
+        chunk_size = 1000       # use config (1000)
+        overlap = 200      # use config (200)
+
         chunks = []
-        for i in range(0, len(text), chunk_size):
-            chunk_text = text[i:i + chunk_size]
+        start = 0
+        chunk_index = 0
+
+        while start < len(text):
+            end = start + chunk_size
+            chunk_text = text[start:end]
+
             chunks.append({
                 "content": chunk_text,
-                "title": f"Chunk {i // chunk_size + 1}",
+                "title": f"Chunk {chunk_index + 1}",
                 "metadata": {
-                    "chunk_index": i // chunk_size,
-                    "start_char": i,
-                    "end_char": min(i + chunk_size, len(text))
+                    "chunk_index": chunk_index,
+                    "start_char": start,
+                    "end_char": min(end, len(text))
                 }
             })
+
+            start += (chunk_size - overlap)
+            chunk_index += 1
 
         return chunks
     
@@ -787,7 +918,7 @@ Answer:
             logger.info(f"[extract_candidates] Extracted {len(candidates)} candidates from {len(docs_for_extraction)} documents")
             for candidate in candidates:
                 logger.debug(f"[extract_candidates] Candidate: {candidate.name}, score={candidate.relevance_score}")
-                print(f"   - {candidate.name}: exp={candidate.experience_years}, skills={len(candidate.skills)}")
+                # print(f"   - {candidate.name}: exp={candidate.experience_years}, skills={len(candidate.skills)}")
             
             return candidates
         except Exception as e:

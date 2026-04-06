@@ -17,9 +17,13 @@ def get_llm_service() -> LLMService:
     return LLMService()
 
 
-def get_memory_service(db: AsyncSession) -> CandidateMemoryService:
-    return CandidateMemoryService(db)
+# def get_memory_service(db: AsyncSession) -> CandidateMemoryService:
+#     return CandidateMemoryService(db)
 
+def get_memory_service(
+    db: AsyncSession = Depends(get_async_db)
+) -> CandidateMemoryService:
+    return CandidateMemoryService(db)
 
 def get_engagement_agent(llm_service: LLMService, memory_service: CandidateMemoryService) -> EngagementAgent:
     return EngagementAgent(llm_service, memory_service)

@@ -12,7 +12,7 @@ from src.ai.llm_service import LLMService
 from src.ai.rag_service import RAGService
 from src.ai.embeddings_service import EmbeddingsService
 from src.application.candidate_memory_service import CandidateMemoryService
-from src.application.recruitment_ai_service import RecruitmentAIService
+from src.ai.recruitment_ai_service import RecruitmentAIService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/agentic-recruitment", tags=["agentic_recruitment"])
