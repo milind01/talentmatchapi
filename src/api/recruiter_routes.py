@@ -40,7 +40,7 @@ async def start_recruitment_campaign(
     search_query: str = Form(...),
     engagement_strategy: str = Form("balanced"),
     auto_engage: bool = Form(False),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Start a full recruitment campaign orchestrated by Recruiter Agent."""
@@ -68,7 +68,7 @@ async def start_recruitment_campaign(
 
 @router.get("/dashboard")
 async def get_recruiter_dashboard(
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get recruiter's hiring dashboard with all KPIs."""
@@ -89,7 +89,7 @@ async def get_recruiter_dashboard(
 
 @router.get("/campaigns")
 async def list_active_campaigns(
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """List all active recruitment campaigns."""
@@ -112,7 +112,7 @@ async def list_active_campaigns(
 @router.get("/pipeline/{jd_id}")
 async def get_candidate_pipeline(
     jd_id: int,
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get candidate pipeline status for a job."""
@@ -137,7 +137,7 @@ async def get_candidate_pipeline(
 @router.post("/hiring-report")
 async def generate_hiring_report(
     jd_id: int = Form(...),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Generate comprehensive hiring report with AI recommendations."""
@@ -166,7 +166,7 @@ async def post_job_with_automation(
     jd_id: int = Form(...),
     auto_search: bool = Form(True),
     auto_engage: bool = Form(False),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Post job and optionally start automated recruitment."""

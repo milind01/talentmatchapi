@@ -37,7 +37,7 @@ def get_services(db: AsyncSession):
 async def run_recruitment_workflow(
     jd_id: int = Form(...),
     search_query: str = Form(...),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Run complete agentic recruitment workflow for a job."""
@@ -82,7 +82,7 @@ async def run_recruitment_workflow(
 async def analyze_resume_with_agent(
     candidate_id: int = Form(...),
     resume_text: str = Form(...),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Use Resume Analyzer Agent to analyze resume."""
@@ -117,7 +117,7 @@ async def analyze_resume_with_agent(
 async def analyze_jd_with_agent(
     jd_id: int = Form(...),
     jd_text: str = Form(...),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Use JD Analyzer Agent to analyze job description."""
@@ -153,7 +153,7 @@ async def smart_search_with_agent(
     jd_id: int = Form(...),
     query: str = Form(...),
     top_k: int = Form(10),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Use Talent Searcher Agent for semantic search."""

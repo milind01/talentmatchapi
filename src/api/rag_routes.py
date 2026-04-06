@@ -57,8 +57,8 @@ async def create_query(
     query_text: str = QueryParam(..., description="The text to query"),
     document_ids: Optional[List[int]] = None,
     top_k: int = QueryParam(5, ge=1, le=20),
-    similarity_threshold: float = QueryParam(0.05, ge=0, le=1),
-    user_id: int = 1,
+    similarity_threshold: float = QueryParam(0.6, ge=0, le=1),
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Create a RAG query."""
@@ -160,7 +160,7 @@ async def get_query(
 async def get_query_history(
     limit: int = QueryParam(10, ge=1, le=100),
     offset: int = QueryParam(0, ge=0),
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get user query history."""

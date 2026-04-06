@@ -1,0 +1,144 @@
+{
+  "tech_stacks": [
+    {
+      "name": "Java Backend",
+      "description": "Java-based backend development using Spring Boot, microservices, and enterprise frameworks",
+      "keywords": ["java", "spring", "spring boot", "maven", "gradle", "microservices", "jpa", "hibernate"],
+      "skills": ["Java", "Spring Boot", "Spring Framework", "Maven", "JPA", "Hibernate", "REST APIs", "Microservices"],
+      "upload_dir": "uploads/tech_stack/java_backend"
+    },
+    {
+      "name": "Python Development",
+      "description": "Python-based development including Django, FastAPI, data science, and automation",
+      "keywords": ["python", "django", "fastapi", "flask", "pandas", "numpy", "pytest", "automation"],
+      "skills": ["Python", "Django", "FastAPI", "Flask", "Pandas", "NumPy", "AsyncIO", "Testing"],
+      "upload_dir": "uploads/tech_stack/python_dev"
+    },
+    {
+      "name": "SAP",
+      "description": "SAP enterprise resource planning - ABAP, FIORI, modules customization",
+      "keywords": ["sap", "abap", "fiori", "sap hana", "bapi", "odata", "mm", "fi", "sd", "hr"],
+      "skills": ["ABAP", "FIORI", "SAP HANA", "BAPIs", "OData", "Material Management", "Finance", "Sales"],
+      "upload_dir": "uploads/tech_stack/sap"
+    },
+    {
+      "name": "ServiceNow",
+      "description": "ServiceNow platform administration, development, and customization",
+      "keywords": ["servicenow", "snc", "workflow", "javascript", "gliderecord", "rest", "integration"],
+      "skills": ["ServiceNow", "JavaScript", "GlideRecord", "REST APIs", "Workflows", "ITSM", "Scripting"],
+      "upload_dir": "uploads/tech_stack/servicenow"
+    },
+    {
+      "name": "Mainframe",
+      "description": "Mainframe legacy systems - COBOL, PL/I, JCL, CICS, DB2",
+      "keywords": ["mainframe", "cobol", "jcl", "cics", "db2", "assembler", "vsam", "tso"],
+      "skills": ["COBOL", "JCL", "CICS", "DB2", "PL/I", "Assembler", "VSAM", "TSO/ISPF"],
+      "upload_dir": "uploads/tech_stack/mainframe"
+    },
+    {
+      "name": "Cloud Architecture (AWS)",
+      "description": "AWS cloud platform - EC2, S3, RDS, Lambda, infrastructure as code",
+      "keywords": ["aws", "ec2", "s3", "rds", "lambda", "cloudformation", "terraform", "docker"],
+      "skills": ["AWS EC2", "S3", "RDS", "Lambda", "CloudFormation", "Terraform", "Docker", "Kubernetes"],
+      "upload_dir": "uploads/tech_stack/aws"
+    },
+    {
+      "name": "Cloud Architecture (Azure)",
+      "description": "Microsoft Azure cloud - VMs, App Services, SQL Database, Functions",
+      "keywords": ["azure", "vm", "app service", "sql database", "functions", "devops", "terraform"],
+      "skills": ["Azure VMs", "App Service", "Azure SQL", "Azure Functions", "DevOps", "Terraform"],
+      "upload_dir": "uploads/tech_stack/azure"
+    },
+    {
+      "name": "React Frontend",
+      "description": "Modern React/JavaScript frontend development with component libraries and state management",
+      "keywords": ["react", "javascript", "typescript", "redux", "material ui", "node", "webpack"],
+      "skills": ["React", "JavaScript", "TypeScript", "Redux", "Material-UI", "REST APIs", "Testing"],
+      "upload_dir": "uploads/tech_stack/react_frontend"
+    },
+    {
+      "name": "DevOps & CI/CD",
+      "description": "DevOps practices, CI/CD pipelines, containerization, and infrastructure automation",
+      "keywords": ["devops", "jenkins", "docker", "kubernetes", "gitlab", "github", "terraform", "ansible"],
+      "skills": ["Jenkins", "Docker", "Kubernetes", "Terraform", "Ansible", "GitLab CI", "GitHub Actions"],
+      "upload_dir": "uploads/tech_stack/devops"
+    },
+    {
+      "name": "Database Administration",
+      "description": "Database design, administration, and optimization - SQL, NoSQL, replication",
+      "keywords": ["database", "sql", "mysql", "postgres", "oracle", "mongodb", "redis", "elasticsearch"],
+      "skills": ["SQL", "MySQL", "PostgreSQL", "Oracle", "MongoDB", "Database Design", "Performance Tuning"],
+      "upload_dir": "uploads/tech_stack/database_admin"
+    },
+    {
+      "name": "Data Engineering",
+      "description": "Big data, data pipelines, ETL, analytics, and data warehousing",
+      "keywords": ["data", "etl", "spark", "hadoop", "kafka", "airflow", "snowflake", "bigquery"],
+      "skills": ["Apache Spark", "Hadoop", "Kafka", "Airflow", "Snowflake", "Data Modeling", "Python"],
+      "upload_dir": "uploads/tech_stack/data_engineering"
+    },
+    {
+      "name": "QA & Testing",
+      "description": "Quality assurance, test automation, and test frameworks",
+      "keywords": ["qa", "testing", "selenium", "junit", "testng", "automation", "pytest", "cucumber"],
+      "skills": ["Selenium", "JUnit", "TestNG", "Pytest", "Cucumber", "JIRA", "Test Planning"],
+      "upload_dir": "uploads/tech_stack/qa_testing"
+    },
+    {
+      "name": "Security & Compliance",
+      "description": "Cybersecurity, compliance frameworks, vulnerability assessment, and pentesting",
+      "keywords": ["security", "compliance", "pci", "hipaa", "gdpr", "penetration", "siem", "encryption"],
+      "skills": ["Security Compliance", "SIEM", "Penetration Testing", "Encryption", "Access Control"],
+      "upload_dir": "uploads/tech_stack/security"
+    },
+    {
+      "name": "HR Technology",
+      "description": "HR systems, payroll, talent management, employee engagement platforms",
+      "keywords": ["hr", "payroll", "talent", "workday", "successfactors", "employee", "recruitment"],
+      "skills": ["Workday", "SuccessFactors", "Taleo", "HR Systems", "Payroll", "Data Analytics"],
+      "upload_dir": "uploads/tech_stack/hr_tech"
+    },
+    {
+      "name": ".NET Development",
+      "description": ".NET framework and Core development using C#, ASP.NET, Entity Framework",
+      "keywords": [".net", "csharp", "asp.net", "entity framework", "linq", "wcf", "nuget"],
+      "skills": ["C#", "ASP.NET Core", "Entity Framework", "LINQ", "Azure", "SQL Server"],
+      "upload_dir": "uploads/tech_stack/dotnet"
+    },
+    {
+      "name": "Mobile Development",
+      "description": "Mobile app development - iOS, Android, React Native, Flutter",
+      "keywords": ["mobile", "ios", "android", "swift", "kotlin", "react native", "flutter"],
+      "skills": ["Swift", "Kotlin", "React Native", "Flutter", "iOS", "Android", "REST APIs"],
+      "upload_dir": "uploads/tech_stack/mobile"
+    },
+    {
+      "name": "Salesforce",
+      "description": "Salesforce CRM customization, development, and administration",
+      "keywords": ["salesforce", "apex", "visualforce", "lightning", "crm", "soql", "rest"],
+      "skills": ["Apex", "Visualforce", "Lightning", "SOQL", "Salesforce Admin", "REST APIs"],
+      "upload_dir": "uploads/tech_stack/salesforce"
+    },
+    {
+      "name": "Business Intelligence",
+      "description": "BI tools and analytics - Tableau, PowerBI, Looker, reporting",
+      "keywords": ["bi", "tableau", "powerbi", "looker", "analytics", "ldap", "cognos"],
+      "skills": ["Tableau", "Power BI", "Looker", "SQL", "Data Visualization", "Analytics"],
+      "upload_dir": "uploads/tech_stack/business_intelligence"
+    },
+    {
+      "name": "Machine Learning & AI",
+      "description": "Machine learning, deep learning, NLP, model training and deployment",
+      "keywords": ["ml", "ai", "python", "tensorflow", "pytorch", "sklearn", "nlp", "computer vision"],
+      "skills": ["Python", "TensorFlow", "PyTorch", "Scikit-learn", "NLP", "Deep Learning"],
+      "upload_dir": "uploads/tech_stack/ml_ai"
+    },
+    {
+      "name": "Network & Infrastructure",
+      "description": "Network administration, infrastructure management, firewalls, and virtualization",
+      "keywords": ["network", "cisco", "firewall", "vpn", "routing", "vmware", "hyper-v", "windows"],
+      "skills": ["Cisco", "Networking", "Firewalls", "VPN", "Virtualization", "Windows Server"],
+      "upload_dir": "uploads/tech_stack/network_infra"
+    }
+  ]
+}

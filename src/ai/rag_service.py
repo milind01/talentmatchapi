@@ -17,7 +17,7 @@ class RAGService:
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
         top_k: int = 10,
-        similarity_threshold: float = 0.45,
+        similarity_threshold: float = 0.6,
     ):
         """Initialize RAG service.
         
@@ -164,24 +164,26 @@ Answer:"""
         user_id,
         documents: List[dict],
         document_id: int,
-        doctype: str,   # ✅ ADD THIS
+        doctype: str,
+        tech_stack_id: Optional[int] = None,  # ✅ NEW: Store tech stack
     ) -> List[dict]:
         """Process and embed documents for vector store.
         
         Args:
             documents: List of document chunks
             document_id: Document ID
+            doctype: Document type (resume, etc.)
+            tech_stack_id: Optional technology stack ID for categorization
             
         Returns:
             List of processed chunks with embeddings
         """
         try:
-            print(f"🔄 RAG PROCESS_DOCUMENTS: Processing {len(documents)} chunks with doctype='{doctype}'")
+            print(f"🔄 RAG PROCESS_DOCUMENTS: Processing {len(documents)} chunks with doctype='{doctype}', tech_stack_id={tech_stack_id}")
             processed_chunks = []
             
             for chunk_idx, chunk in enumerate(documents):
                 # Create embedding
-                # embedding = await self.vector_store.embed(chunk["content"])
                 embedding = await self.embeddings_service.embed_text(chunk["content"])
                 
                 chunk_data = {
@@ -189,11 +191,13 @@ Answer:"""
                     "content": chunk["content"],
                     "metadata": {
                         "user_id": user_id, 
-                        "document_id": document_id,   # (good to add here also)
-                        "doctype": doctype,           # ✅ KEY ADDITION - SET HERE
+                        "document_id": document_id,
+                        "doctype": doctype,
+                        "tech_stack_id": tech_stack_id,  # ✅ NEW: Store for filtering
                         "chunk_index": chunk.get("metadata", {}).get("chunk_index", chunk_idx),
                         "start_char": chunk.get("metadata", {}).get("start_char", 0),
                         "end_char": chunk.get("metadata", {}).get("end_char", 0),
+                        "resume_id": chunk.get("metadata", {}).get("resume_id"),  # From envelope chunks
                     },
                     "embedding": embedding,
                 }
@@ -203,8 +207,8 @@ Answer:"""
                 
                 processed_chunks.append(chunk_data)
             
-            print(f"✅ RAG PROCESS_DOCUMENTS: Processed {len(processed_chunks)} chunks, all with doctype='{doctype}'")
-            logger.info(f"Processed {len(processed_chunks)} chunks with doctype={doctype}")
+            print(f"✅ RAG PROCESS_DOCUMENTS: Processed {len(processed_chunks)} chunks with tech_stack_id={tech_stack_id}")
+            logger.info(f"Processed {len(processed_chunks)} chunks with doctype={doctype}, tech_stack_id={tech_stack_id}")
             return processed_chunks
             
         except Exception as e:

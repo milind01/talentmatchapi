@@ -14,8 +14,9 @@ from src.api.interview_routes import router as interview_router
 from src.api.hiring_routes import router as hiring_router
 from src.api.agentic_recruitment_routes import router as agentic_recruitment_router
 from src.api.recruiter_routes import router as recruiter_router
+from src.application.tech_stack_detection_service import TechStackDetectionService  # ✅ NEW
 from src.core.config import settings
-from src.core.database import init_db, close_db
+from src.core.database import init_db, close_db, get_async_db
 
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,12 @@ async def startup_event():
     try:
         await init_db()
         logger.info("Database initialized successfully")
+        
+        # ✅ NEW: Initialize tech stack detection cache
+        from src.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            await TechStackDetectionService.initialize_cache(db)
+            logger.info("Tech stack detection cache initialized")
     except Exception as e:
         logger.error(f"Error initializing database: {str(e)}")
 

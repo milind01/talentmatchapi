@@ -49,6 +49,7 @@ class Candidate(Base):
     id = Column(Integer, primary_key=True, index=True)
     job_description_id = Column(Integer, ForeignKey("job_descriptions.id"), nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    tech_stack_id = Column(Integer, ForeignKey("tech_stacks.id"), nullable=True)  # ✅ NEW
 
     # File info
     file_path = Column(String(1000), nullable=False)
@@ -72,6 +73,7 @@ class Candidate(Base):
     rank = Column(Integer, nullable=True)
     summary = Column(Text, nullable=True)                  # AI-generated summary
     shortlisted = Column(Boolean, default=False)
+    completed = Column(Boolean, default=False)             # ✅ NEW - Mark as processed/completed
 
     status = Column(String(50), default="pending")         # pending, parsed, scored, failed
 
@@ -82,12 +84,44 @@ class Candidate(Base):
     job_description = relationship("JobDescription", back_populates="candidates")
     owner = relationship("User")
     emails = relationship("CandidateEmail", back_populates="candidate")
+    tech_stack = relationship("TechStack", back_populates="candidates")  # ✅ NEW
 
     __table_args__ = (
         Index("ix_candidates_jd_id", "job_description_id"),
         Index("ix_candidates_owner_id", "owner_id"),
         Index("ix_candidates_shortlisted", "shortlisted"),
+        Index("ix_candidates_completed", "completed"),      # ✅ NEW
         Index("ix_candidates_rank", "rank"),
+    )
+
+
+class TechStack(Base):
+    """Technology stack categories - replaces hardcoded domains."""
+    __tablename__ = "tech_stacks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Category name e.g., "Java Backend", "SAP", "ServiceNow", "Mainframe", "HR Tech"
+    name = Column(String(255), nullable=False, unique=True)
+    description = Column(Text, nullable=True)
+    
+    # Keywords for auto-detection (comma-separated or JSON list)
+    keywords = Column(JSON, nullable=True)                 # ["java", "spring", "maven", ...]
+    skills = Column(JSON, nullable=True)                   # Expected skills
+    upload_dir = Column(String(500), nullable=True)        # e.g., "uploads/java_backend", "uploads/sap"
+    
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    owner = relationship("User")
+    candidates = relationship("Candidate", back_populates="tech_stack")
+    
+    __table_args__ = (
+        Index("ix_tech_stack_owner_id", "owner_id"),
+        Index("ix_tech_stack_name", "name"),
     )
 
 

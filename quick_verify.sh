@@ -130,7 +130,7 @@ echo ""
 echo "8️⃣  Creating RAG query (asking about the document)..."
 # QUERY=$(curl -s -X POST "$BASE_URL/api/v1/rag/query?query_text=What%20is%20artificial%20intelligence%20and%20machine%20learning%3F&top_k=5&similarity_threshold=0.7" \
 #   -H "Authorization: Bearer $TOKEN")
-QUERY=$(curl -s -X POST "$BASE_URL/api/v1/rag/query?query_text=What%20does%20the%20uploaded%20document%20say%20about%20artificial%20intelligence%3F&top_k=5&similarity_threshold=0.1" \
+QUERY=$(curl -s -X POST "$BASE_URL/api/v1/rag/query?query_text=What%20does%20the%20uploaded%20document%20say%20about%20artificial%20intelligence%3F&top_k=5&similarity_threshold=0.6" \
   -H "Authorization: Bearer $TOKEN")
 
 if echo "$QUERY" | grep -q '"id"'; then

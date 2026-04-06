@@ -32,7 +32,7 @@ from src.core.config import settings
 from src.ai.llm_service import LLMService
 from src.ai.embeddings_service import EmbeddingsService
 from src.ai.recruitment_ai_service import RecruitmentAIService
-from src.data.recruitment_models import JobDescription, Candidate, CandidateEmail
+from src.data.recruitment_models import JobDescription, Candidate, CandidateEmail, TechStack
 from src.data.recruitment_schemas import (
     JDParseResponse, JDListItem,
     CandidateResponse, CandidateRanked,
@@ -40,6 +40,7 @@ from src.data.recruitment_schemas import (
     ShortlistRequest, ShortlistResponse,
     EmailGenerateRequest, EmailResponse, BulkEmailRequest,
     CandidateSummaryResponse,
+    TechStackCreate, TechStackResponse,
 )
 from src.application.orchestration_service import RequestOrchestrationService
 from src.ai.rag_service import RAGService
@@ -118,7 +119,7 @@ async def upload_jd(
     file: UploadFile = File(..., description="JD file: PDF, DOCX, or TXT"),
     title: str = Form(..., description="Job title"),
     company: Optional[str] = Form(None),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     ai: RecruitmentAIService = Depends(get_recruitment_ai),
 ):
@@ -175,7 +176,7 @@ async def get_jd(jd_id: int, db: AsyncSession = Depends(get_async_db)):
 
 @router.get("/jd", response_model=List[JDListItem], summary="List all JDs")
 async def list_jds(
-    user_id: int = QueryParam(1),
+    user_id: int = QueryParam(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     result = await db.execute(
@@ -187,22 +188,122 @@ async def list_jds(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 1.5. TECHNOLOGY STACK MANAGEMENT (NEW)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/tech-stack", response_model=TechStackResponse, summary="Create a new technology stack category")
+async def create_tech_stack(
+    payload: TechStackCreate,
+    user_id: int = QueryParam(...),  # ✅ FIXED: Now required
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Create a technology stack category for organizing resumes.
+    
+    **Examples:**
+    - SAP Backend Developers
+    - ServiceNow Implementation
+    - Mainframe COBOL
+    - HR Tech Specialists
+    - Cloud Architects
+    """
+    import os
+    
+    # Create upload directory if upload_dir not provided
+    if not payload.upload_dir:
+        safe_name = payload.name.lower().replace(" ", "_")
+        payload.upload_dir = f"uploads/tech_stack/{safe_name}"
+    
+    # Create directory
+    os.makedirs(payload.upload_dir, exist_ok=True)
+    
+    tech_stack = TechStack(
+        owner_id=user_id,
+        name=payload.name,
+        description=payload.description,
+        keywords=payload.keywords,
+        skills=payload.skills,
+        upload_dir=payload.upload_dir,
+    )
+    
+    db.add(tech_stack)
+    await db.commit()
+    await db.refresh(tech_stack)
+    
+    logger.info(f"Created tech stack: id={tech_stack.id}, name={tech_stack.name}")
+    return tech_stack
+
+
+@router.get("/tech-stack", response_model=List[TechStackResponse], summary="List all technology stacks")
+async def list_tech_stacks(
+    user_id: int = QueryParam(...),  # ✅ FIXED: Now required
+    active_only: bool = QueryParam(True),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get all technology stack categories for a user."""
+    stmt = select(TechStack).where(TechStack.owner_id == user_id)
+    
+    if active_only:
+        stmt = stmt.where(TechStack.is_active == True)
+    
+    result = await db.execute(stmt.order_by(TechStack.created_at.desc()))
+    return result.scalars().all()
+
+
+@router.get("/tech-stack/{tech_stack_id}", response_model=TechStackResponse, summary="Get technology stack details")
+async def get_tech_stack(
+    tech_stack_id: int,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a specific technology stack."""
+    result = await db.execute(select(TechStack).where(TechStack.id == tech_stack_id))
+    tech_stack = result.scalars().first()
+    
+    if not tech_stack:
+        raise HTTPException(status_code=404, detail="Technology stack not found")
+    
+    return tech_stack
+
+
+@router.delete("/tech-stack/{tech_stack_id}", summary="Delete a technology stack")
+async def delete_tech_stack(
+    tech_stack_id: int,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Soft-delete a technology stack (mark as inactive)."""
+    result = await db.execute(select(TechStack).where(TechStack.id == tech_stack_id))
+    tech_stack = result.scalars().first()
+    
+    if not tech_stack:
+        raise HTTPException(status_code=404, detail="Technology stack not found")
+    
+    tech_stack.is_active = False
+    await db.commit()
+    
+    logger.info(f"Deactivated tech stack: {tech_stack_id}")
+    return {"status": "deleted", "tech_stack_id": tech_stack_id}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 2. RESUME BULK UPLOAD
 # ─────────────────────────────────────────────────────────────────────────────
 
-@router.post("/resume/bulk-upload", summary="Bulk upload resumes for a JD")
+@router.post("/resume/bulk-upload", summary="Bulk upload resumes for a JD or Technology Stack")
 async def bulk_upload_resumes(
     jd_id: int = Form(..., description="Job Description ID"),
-    user_id: int = Form(1),
-    # files: List[UploadFile] = File(..., description="One or more resume files"),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
+    tech_stack_id: Optional[int] = Form(None, description="Optional: Technology Stack ID for categorization"),
     file: UploadFile = File(...), 
     db: AsyncSession = Depends(get_async_db),
-    # ai: RecruitmentAIService = Depends(get_recruitment_ai),
     ai: RecruitmentAIService = Depends(get_recruitment_ai),
 
 ):
     """
-    Upload multiple resumes → parse each with LLM → save candidates to DB.
+    Upload resumes → parse with LLM → save candidates to DB.
+    
+    **NEW**: Can now organize resumes by technology stack (SAP, ServiceNow, etc.)
+    instead of just by JD.
+    
     Returns list of created candidate records.
     """
     # Validate JD exists
@@ -210,13 +311,23 @@ async def bulk_upload_resumes(
     jd = jd_result.scalars().first()
     if not jd:
         raise HTTPException(status_code=404, detail="Job description not found")
+    
+    # Validate tech_stack if provided
+    if tech_stack_id:
+        ts_result = await db.execute(select(TechStack).where(TechStack.id == tech_stack_id))
+        tech_stack = ts_result.scalars().first()
+        if not tech_stack:
+            raise HTTPException(status_code=404, detail="Technology stack not found")
+        upload_subdir = f"tech_stack/{tech_stack_id}"
+    else:
+        upload_subdir = f"resumes/{jd_id}"
 
     created = []
     failed = []
 
     for upload in [file]:
         try:
-            file_path = await save_upload(upload, f"resumes/{jd_id}")
+            file_path = await save_upload(upload, upload_subdir)
             raw_text = await extract_text_from_file(file_path)
 
             if not raw_text:
@@ -229,6 +340,7 @@ async def bulk_upload_resumes(
             candidate = Candidate(
                 job_description_id=jd_id,
                 owner_id=user_id,
+                tech_stack_id=tech_stack_id,  # ✅ NEW: Link to tech stack
                 file_path=file_path,
                 file_name=upload.filename,
                 file_type=upload.filename.rsplit(".", 1)[-1].lower(),
@@ -252,16 +364,11 @@ async def bulk_upload_resumes(
 
             await orchestration_service.process_document_upload(
                     user_id=user_id,
-                    document_id=candidate.id,  # ✅ unique fake ID
-                    document_path=file_path,                 # ✅ actual resume file
+                    document_id=candidate.id,
+                    document_path=file_path,
                     rag_service=rag_service,
-                    doctype= "resume",
-                    # metadata={
-                    #     "doctype": "resume",              # 🔥 IMPORTANT FILTER
-                    #     "jd_id": jd_id,
-                    #     "candidate_id": candidate.id,
-                    #     "file_name": upload.filename,
-                    # }
+                    doctype="resume",
+                    tech_stack_id=tech_stack_id,  # ✅ NEW: Pass tech stack
                 )
 
             print("✅ Resume indexed successfully")
@@ -450,20 +557,26 @@ async def shortlist_candidates(
     payload: ShortlistRequest,
     db: AsyncSession = Depends(get_async_db),
 ):
-    """Set shortlisted=True for given candidate IDs."""
+    """
+    Set shortlisted=True for given candidate IDs.
+    
+    ✅ NEW: Also marks candidates as completed to exclude from future query cycles.
+    """
     # Unshortlist all for this JD first (clean slate)
     await db.execute(
         update(Candidate)
         .where(Candidate.job_description_id == payload.job_description_id)
         .values(shortlisted=False)
     )
-    # Shortlist selected
+    # Shortlist selected AND mark as completed
     await db.execute(
         update(Candidate)
         .where(Candidate.id.in_(payload.candidate_ids))
-        .values(shortlisted=True)
+        .values(shortlisted=True, completed=True)  # ✅ Mark as completed
     )
     await db.commit()
+    
+    logger.info(f"[shortlist] Marked {len(payload.candidate_ids)} candidates as shortlisted & completed")
 
     return ShortlistResponse(
         job_description_id=payload.job_description_id,

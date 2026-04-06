@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5
-    rag_similarity_threshold: float = 0.1
+    rag_similarity_threshold: float = 0.6
     
     # Logging
     log_level: str = "INFO"

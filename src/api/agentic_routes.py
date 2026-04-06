@@ -4,6 +4,8 @@ from typing import Optional, Dict, Any, List
 import logging
 
 from src.application.orchestration_service import RequestOrchestrationService
+from src.application.candidate_analytics_service import CandidateAnalyticsService
+from src.application.tech_stack_detection_service import TechStackDetectionService  # ✅ NEW
 from src.data.schemas import (
     PaginatedResponse,
     AgentQueryRequest,
@@ -18,6 +20,9 @@ from src.data.schemas import (
     QueryWithReflectionResponse,
     ExecutionStep,
 )
+from src.data.recruitment_schemas import CandidateStatsResponse
+from src.core.database import get_async_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -33,39 +38,139 @@ def get_orchestration_service() -> RequestOrchestrationService:
 async def execute_agent_query(
     request: AgentQueryRequest,
     orchestration: RequestOrchestrationService = Depends(get_orchestration_service),
+    db: AsyncSession = Depends(get_async_db),
 ) -> AgentQueryResponse:
     """
     Execute an agentic query with intelligent routing.
     
-    Simple queries use fast RAG path, complex queries use multi-step agent.
+    Handles:
+    - Simple queries: Fast RAG path
+    - Complex queries: Multi-step agent
+    - **Statistical queries**: Count/percentage analysis
     
     **Query Examples:**
     - Simple: "Find candidates with Python experience" (RAG)
     - Complex: "Find senior devs, score them against the Java JD, then email them" (Agent)
+    - Statistical: "Count candidates with Java" or "% of candidates with 5+ years"
     
     **Query Parameters:**
     - `query`: The question or task to process
-    - `user_id`: User ID for context and memory
+    - `user_id`: User ID for context and memory (for stats queries, defaults to 1)
     - `use_agent_if_complex`: Use agent for complex queries (default: true)
+    - `tech_stack_id`: Optional filter by technology stack
     
     **Response:**
     - `status`: "success" or "error"
-    - `route`: "rag" or "agent" (which path was used)
+    - `route`: "rag", "agent", or "analytics" (which path was used)
     - `answer`: The generated answer or result
-    - `candidates`: List of candidate details with experience, projects, and relevance scores
-    - `execution_trace`: Step-by-step execution details
-    - `quality_score`: Answer quality assessment (if reflected)
-    - `total_time_ms`: Total execution time
+    - `candidates`: List of candidate details
+    - For stats queries: includes breakdown with count/percentage
     """
     try:
         logger.info(
             f"[agent_query] user_id={request.user_id}, use_agent={request.use_agent_if_complex}, query_len={len(request.query)}"
         )
         
+        # ✅ NEW: Check if this is a statistical query
+        stats_query = await CandidateAnalyticsService.parse_statistical_query(request.query)
+        
+        if stats_query:
+            logger.info(f"[agent_query] Detected statistical query: {stats_query['type']}")
+            
+            if stats_query["type"] == "count":
+                # Handle count queries
+                result = await CandidateAnalyticsService.get_count_by_skill(
+                    db=db,
+                    skill_text=stats_query["criteria"],
+                    user_id=request.user_id,
+                    exclude_completed=True
+                )
+                
+                return AgentQueryResponse(
+                    status="success",
+                    route="analytics",
+                    answer=f"Found {result['count']} candidates with {stats_query['criteria']} experience out of {result['total']} total.",
+                    candidates=[],
+                    execution_trace=[{
+                        "step": "count_analysis",
+                        "type": "count",
+                        "skill": stats_query["criteria"],
+                        "count": result["count"],
+                        "percentage": result["percentage"]
+                    }],
+                    quality_score=0.95,
+                    total_time_ms=0,
+                    metadata={
+                        "query_type": "count",
+                        "count": result["count"],
+                        "total": result["total"],
+                        "percentage": result["percentage"],
+                        "skill": stats_query["criteria"]
+                    }
+                )
+            
+            elif stats_query["type"] == "percentage":
+                # Handle percentage queries
+                min_years = CandidateAnalyticsService.parse_experience_criteria(stats_query["criteria"])
+                
+                if min_years is not None:
+                    result = await CandidateAnalyticsService.get_percentage_by_experience(
+                        db=db,
+                        min_years=min_years,
+                        user_id=request.user_id,
+                        exclude_completed=True
+                    )
+                    
+                    return AgentQueryResponse(
+                        status="success",
+                        route="analytics",
+                        answer=f"{result['percentage']:.1f}% of candidates ({result['count']} out of {result['total']}) have {min_years}+ years of experience.",
+                        candidates=[],
+                        execution_trace=[{
+                            "step": "percentage_analysis",
+                            "type": "percentage",
+                            "criteria": f"{min_years}+ years",
+                            "count": result["count"],
+                            "percentage": result["percentage"]
+                        }],
+                        quality_score=0.95,
+                        total_time_ms=0,
+                        metadata={
+                            "query_type": "percentage",
+                            "percentage": result["percentage"],
+                            "count": result["count"],
+                            "total": result["total"],
+                            "criteria": f"{min_years}+ years"
+                        }
+                    )
+        
+        # ✅ NEW: Auto-detect tech stack from query if not provided
+        detected_tech_stack_id = request.tech_stack_id
+        detected_tech_stack_name = None
+        detection_confidence = 0.0
+        
+        if not request.tech_stack_id:
+            # Initialize cache if needed
+            if TechStackDetectionService._tech_stacks_cache is None:
+                await TechStackDetectionService.initialize_cache(db)
+            
+            # Auto-detect tech stack
+            detected_tech_stack_id, detected_tech_stack_name, detection_confidence = (
+                await TechStackDetectionService.detect_tech_stack(request.query, db)
+            )
+            
+            if detected_tech_stack_id:
+                logger.info(
+                    f"[agent_query] Auto-detected tech stack: {detected_tech_stack_name} "
+                    f"(id={detected_tech_stack_id}, confidence={detection_confidence:.2f})"
+                )
+        
+        # If not a statistical query, use normal agentic routing
         result = await orchestration.run_agentic_query(
             user_id=request.user_id,
             query=request.query,
             use_agent_if_complex=request.use_agent_if_complex,
+            tech_stack_id=detected_tech_stack_id,  # ✅ NEW: Use auto-detected or provided tech stack
         )
         
         logger.info(f"[agent_query] completed: route={result.get('route')}, time_ms={result.get('processing_time_ms')}")
@@ -78,7 +183,13 @@ async def execute_agent_query(
             "candidates": result.get("candidates", []),
             "execution_trace": result.get("execution_trace", []),
             "quality_score": result.get("quality_score"),
-            "total_time_ms": int(result.get("processing_time_ms", 0))
+            "total_time_ms": int(result.get("processing_time_ms", 0)),
+            "metadata": {
+                **(result.get("metadata", {})),  # Include existing metadata
+                "tech_stack_id": detected_tech_stack_id,  # ✅ NEW: Add detected tech stack
+                "tech_stack_name": detected_tech_stack_name,  # ✅ NEW: Add tech stack name
+                "tech_stack_detection_confidence": detection_confidence,  # ✅ NEW: Add confidence score
+            }
         }
         
         return AgentQueryResponse(**response_data)

@@ -34,7 +34,7 @@ async def generate_outreach_message(
     candidate_id: int = Form(...),
     candidate_name: str = Form(...),
     role: str = Form(...),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     llm_service: LLMService = Depends(get_llm_service),
     memory_service: CandidateMemoryService = Depends(get_memory_service),
@@ -79,7 +79,7 @@ async def generate_screening_questions(
     candidate_id: int = Form(...),
     role: str = Form(...),
     question_count: int = Form(5),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     llm_service: LLMService = Depends(get_llm_service),
 ):
@@ -118,7 +118,7 @@ async def generate_screening_questions(
 async def respond_to_inquiry(
     candidate_id: int = Form(...),
     inquiry: str = Form(...),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     llm_service: LLMService = Depends(get_llm_service),
     memory_service: CandidateMemoryService = Depends(get_memory_service),
@@ -160,7 +160,7 @@ async def respond_to_inquiry(
 async def get_interaction_history(
     candidate_id: int,
     limit: int = 20,
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     memory_service: CandidateMemoryService = Depends(get_memory_service),
 ):
@@ -185,7 +185,7 @@ async def get_interaction_history(
 @router.get("/candidate-profile/{candidate_id}")
 async def get_candidate_profile(
     candidate_id: int,
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     memory_service: CandidateMemoryService = Depends(get_memory_service),
 ):

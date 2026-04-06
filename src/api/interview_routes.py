@@ -37,7 +37,7 @@ async def schedule_interview(
     interview_type: str = Form(...),  # phone_screen, technical, behavioral, final
     interviewer_name: str = Form(...),
     suggested_times: Optional[List[str]] = Form(None),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     llm_service: LLMService = Depends(get_llm_service),
     memory_service: CandidateMemoryService = Depends(get_memory_service),
@@ -101,7 +101,7 @@ async def record_interview_feedback(
     cultural_fit: int = Form(...),
     recommendation: str = Form(...),  # yes, no, maybe, escalate
     feedback: str = Form(...),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     memory_service: CandidateMemoryService = Depends(get_memory_service),
 ):
@@ -148,7 +148,7 @@ async def record_interview_feedback(
 @router.get("/records/{candidate_id}")
 async def get_interview_records(
     candidate_id: int,
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get all interview records for candidate."""
@@ -190,7 +190,7 @@ async def get_interview_records(
 @router.get("/interview-summary/{candidate_id}")
 async def get_interview_summary(
     candidate_id: int,
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get summary of all interviews for candidate."""

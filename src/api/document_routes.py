@@ -71,7 +71,7 @@ async def upload_document(
     title: Optional[str] = None,
     description: Optional[str] = None,
     doctype: str = "general",  # ← ADD: Accept doctype parameter (default: general, can be resume, jd, etc.)
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Upload a document (supports PDF, TXT, and other text formats).
@@ -186,7 +186,7 @@ async def list_documents(
     status: Optional[str] = None,
     limit: int = QueryParam(10, ge=1, le=100),
     offset: int = QueryParam(0, ge=0),
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """List documents."""

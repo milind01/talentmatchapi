@@ -299,6 +299,10 @@ class AgentQueryRequest(BaseModel):
         default=True,
         description="Use agent for complex queries"
     )
+    tech_stack_id: Optional[int] = Field(
+        None,
+        description="Optional: Filter search by technology stack (e.g., Java, SAP, ServiceNow)"
+    )
 
 
 class ExecutionStep(BaseModel):

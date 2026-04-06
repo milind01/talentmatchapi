@@ -328,7 +328,7 @@ class AgentTeam:
         jd_id: int,
         jd_text: str,
         search_query: str,
-        user_id: int = 1
+        user_id: int  # ✅ FIXED: Now required (was: user_id: int = 1)
     ) -> Dict[str, Any]:
         """Run complete recruitment workflow."""
         workflow_results = {}

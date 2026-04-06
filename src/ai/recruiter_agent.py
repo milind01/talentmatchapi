@@ -30,7 +30,7 @@ class RECRUITERAgent:
         jd_id: int,
         search_query: str,
         engagement_strategy: str = "aggressive",  # aggressive, balanced, conservative
-        user_id: int = 1
+        user_id: int  # ✅ FIXED: Now required (was: user_id: int = 1)
     ) -> Dict[str, Any]:
         """
         Start a complete recruitment campaign orchestrated by recruiter agent.
@@ -136,7 +136,7 @@ class RECRUITERAgent:
     async def manage_candidate_pipeline(
         self,
         jd_id: int,
-        user_id: int = 1
+        user_id: int  # ✅ FIXED: Now required (was: user_id: int = 1)
     ) -> Dict[str, Any]:
         """
         Get current status of candidate pipeline for a job.
@@ -158,7 +158,7 @@ class RECRUITERAgent:
     
     async def get_hiring_dashboard(
         self,
-        user_id: int = 1
+        user_id: int  # ✅ FIXED: Now required (was: user_id: int = 1)
     ) -> Dict[str, Any]:
         """
         Get comprehensive hiring dashboard with all metrics.
@@ -186,7 +186,7 @@ class RECRUITERAgent:
     async def generate_hiring_report(
         self,
         jd_id: int,
-        user_id: int = 1
+        user_id: int  # ✅ FIXED: Now required (was: user_id: int = 1)
     ) -> Dict[str, Any]:
         """
         Generate comprehensive hiring report with recommendations.
@@ -228,7 +228,7 @@ class RecruitmentOrchestrator:
         jd_id: int,
         auto_search: bool = True,
         auto_engage: bool = False,
-        user_id: int = 1
+        user_id: int  # ✅ FIXED: Now required (was: user_id: int = 1)
     ) -> Dict[str, Any]:
         """
         Post a job and optionally start automated recruitment.
@@ -259,7 +259,7 @@ class RecruitmentOrchestrator:
     async def get_recruitment_status(
         self,
         jd_id: int,
-        user_id: int = 1
+        user_id: int  # ✅ FIXED: Now required (was: user_id: int = 1)
     ) -> Dict[str, Any]:
         """
         Get current status of recruitment for a job.

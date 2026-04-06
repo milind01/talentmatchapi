@@ -1,0 +1,295 @@
+#!/usr/bin/env python
+"""
+Tech Stack System End-to-End Test
+Demonstrates complete workflow from seed → upload → query
+"""
+
+import requests
+import json
+import sys
+from typing import Optional
+
+# Configuration
+API_BASE = "http://localhost:8000"
+TECH_STACK_ENDPOINT = f"{API_BASE}/api/v1/recruitment/tech-stack"
+QUERY_ENDPOINT = f"{API_BASE}/api/agent/query"
+
+# Color codes for output
+GREEN = '\033[92m'
+RED = '\033[91m'
+YELLOW = '\033[93m'
+BLUE = '\033[94m'
+END = '\033[0m'
+
+def print_header(text: str):
+    """Print a section header"""
+    print(f"\n{YELLOW}{'='*60}{END}")
+    print(f"{YELLOW}{text.center(60)}{END}")
+    print(f"{YELLOW}{'='*60}{END}\n")
+
+def print_success(msg: str):
+    """Print success message"""
+    print(f"{GREEN}✓ {msg}{END}")
+
+def print_error(msg: str):
+    """Print error message"""
+    print(f"{RED}✗ {msg}{END}")
+
+def print_info(msg: str):
+    """Print info message"""
+    print(f"{BLUE}ℹ {msg}{END}")
+
+def test_api_running() -> bool:
+    """Test 1: Check if API is running"""
+    print_header("TEST 1: API Health Check")
+    try:
+        response = requests.get(TECH_STACK_ENDPOINT, timeout=5)
+        if response.status_code == 200:
+            print_success(f"API is running on {API_BASE}")
+            return True
+        else:
+            print_error(f"API returned status code {response.status_code}")
+            return False
+    except requests.exceptions.ConnectionError:
+        print_error(f"Cannot connect to API at {API_BASE}")
+        print_info("Start the API with: python main.py")
+        return False
+    except Exception as e:
+        print_error(f"Error connecting to API: {str(e)}")
+        return False
+
+def test_tech_stacks_loaded() -> Optional[list]:
+    """Test 2: Check if tech stacks are loaded"""
+    print_header("TEST 2: Tech Stack Data Loaded")
+    try:
+        response = requests.get(TECH_STACK_ENDPOINT, timeout=5)
+        response.raise_for_status()
+        
+        tech_stacks = response.json()
+        count = len(tech_stacks)
+        
+        if count < 20:
+            print_error(f"Only {count} tech stacks loaded (expected 20)")
+            print_info("Run: python seed_tech_stacks.py")
+            return None
+        
+        print_success(f"All {count} tech stacks loaded successfully")
+        return tech_stacks
+    except Exception as e:
+        print_error(f"Error fetching tech stacks: {str(e)}")
+        return None
+
+def display_tech_stacks(tech_stacks: list):
+    """Display list of all tech stacks"""
+    print_header("Available Tech Stacks")
+    
+    print(f"{'ID':<3} {'Name':<25} {'Skills Count':<15} {'Upload Dir':<30}")
+    print("-" * 75)
+    
+    for stack in tech_stacks:
+        name = stack.get('name', 'N/A')[:22]
+        skills_count = len(stack.get('skills', []))
+        upload_dir = stack.get('upload_dir', 'N/A')[-28:]
+        print(f"{stack['id']:<3} {name:<25} {skills_count:<15} {upload_dir:<30}")
+
+def test_get_specific_stack(tech_stacks: list) -> bool:
+    """Test 3: Get specific tech stack details"""
+    print_header("TEST 3: Get Specific Tech Stack (SAP)")
+    
+    try:
+        # Find SAP stack (should be id 3 from seed data)
+        response = requests.get(f"{TECH_STACK_ENDPOINT}/3", timeout=5)
+        response.raise_for_status()
+        
+        stack = response.json()
+        print_success(f"Retrieved tech stack: {stack['name']}")
+        
+        print(f"\n  Description: {stack.get('description', 'N/A')}")
+        print(f"  Keywords: {', '.join(stack.get('keywords', []))}")
+        print(f"  Skills: {', '.join(stack.get('skills', []))}")
+        print(f"  Upload Dir: {stack.get('upload_dir', 'N/A')}")
+        print(f"  Active: {stack.get('is_active', False)}")
+        
+        return True
+    except Exception as e:
+        print_error(f"Error fetching SAP tech stack: {str(e)}")
+        return False
+
+def test_query_with_filter(tech_stack_id: int = 3) -> bool:
+    """Test 4: Query with tech_stack_id filter"""
+    print_header("TEST 4: Query with Tech Stack Filter")
+    
+    payload = {
+        "query": "Show me candidates",
+        "user_id": 1,
+        "tech_stack_id": tech_stack_id
+    }
+    
+    try:
+        print_info(f"Sending query with tech_stack_id={tech_stack_id}...")
+        print_info(f"Payload: {json.dumps(payload, indent=2)}")
+        
+        response = requests.post(QUERY_ENDPOINT, json=payload, timeout=10)
+        response.raise_for_status()
+        
+        result = response.json()
+        print_success("Query accepted and processed")
+        
+        print(f"\n  Response Status: {result.get('status', 'N/A')}")
+        print(f"  Route: {result.get('route', 'N/A')}")
+        
+        if 'candidates' in result and result['candidates']:
+            print(f"  Candidates Found: {len(result['candidates'])}")
+        
+        return True
+    except Exception as e:
+        print_error(f"Error executing query: {str(e)}")
+        return False
+
+def test_count_query(tech_stack_id: int = 3) -> bool:
+    """Test 5: Statistical count query"""
+    print_header("TEST 5: Statistical Query (Count)")
+    
+    payload = {
+        "query": "How many candidates have experience?",
+        "user_id": 1,
+        "tech_stack_id": tech_stack_id
+    }
+    
+    try:
+        print_info("Sending statistical count query...")
+        
+        response = requests.post(QUERY_ENDPOINT, json=payload, timeout=10)
+        response.raise_for_status()
+        
+        result = response.json()
+        print_success("Statistical query processed")
+        
+        print(f"\n  Response Status: {result.get('status', 'N/A')}")
+        print(f"  Route: {result.get('route', 'N/A')}")
+        
+        if 'metadata' in result:
+            metadata = result['metadata']
+            if 'count' in metadata:
+                print(f"  Count Result: {metadata['count']}")
+            if 'percentage' in metadata:
+                print(f"  Percentage: {metadata['percentage']}%")
+        
+        return True
+    except Exception as e:
+        print_error(f"Error executing statistical query: {str(e)}")
+        return False
+
+def test_query_all_stacks() -> bool:
+    """Test 6: Query without tech_stack_id filter"""
+    print_header("TEST 6: Query All Tech Stacks (No Filter)")
+    
+    payload = {
+        "query": "Show me top candidates",
+        "user_id": 1
+    }
+    
+    try:
+        print_info("Sending query without tech_stack_id (search all stacks)...")
+        
+        response = requests.post(QUERY_ENDPOINT, json=payload, timeout=10)
+        response.raise_for_status()
+        
+        result = response.json()
+        print_success("Cross-stack query processed")
+        
+        print(f"\n  Response Status: {result.get('status', 'N/A')}")
+        
+        return True
+    except Exception as e:
+        print_error(f"Error executing cross-stack query: {str(e)}")
+        return False
+
+def display_usage_examples():
+    """Display usage examples"""
+    print_header("USAGE EXAMPLES")
+    
+    examples = [
+        ("List all tech stacks", "curl http://localhost:8000/api/v1/recruitment/tech-stack"),
+        ("Upload resume to tech stack", 
+         "curl -X POST http://localhost:8000/api/v1/recruitment/resume/bulk-upload \\\n"
+         "  -F 'jd_id=1' -F 'tech_stack_id=3' -F 'file=@resume.pdf'"),
+        ("Query specific tech stack",
+         "curl -X POST http://localhost:8000/api/agent/query \\\n"
+         "  -H 'Content-Type: application/json' \\\n"
+         "  -d '{\"query\": \"ABAP developers\", \"tech_stack_id\": 3}'"),
+        ("Count query",
+         "curl -X POST http://localhost:8000/api/agent/query \\\n"
+         "  -H 'Content-Type: application/json' \\\n"
+         "  -d '{\"query\": \"How many ABAP developers?\", \"tech_stack_id\": 3}'"),
+    ]
+    
+    for i, (title, cmd) in enumerate(examples, 1):
+        print(f"{BLUE}Example {i}: {title}{END}")
+        print(f"  {cmd}\n")
+
+def main():
+    """Run all tests"""
+    print(f"\n{BLUE}{'='*60}")
+    print(f"Tech Stack System End-to-End Verification".center(60))
+    print(f"{'='*60}{END}\n")
+    
+    tests_passed = 0
+    tests_total = 0
+    
+    # Test 1: API Running
+    tests_total += 1
+    if test_api_running():
+        tests_passed += 1
+    else:
+        print_error("API not available. Exiting.")
+        sys.exit(1)
+    
+    # Test 2: Tech Stacks Loaded
+    tests_total += 1
+    tech_stacks = test_tech_stacks_loaded()
+    if tech_stacks:
+        tests_passed += 1
+        display_tech_stacks(tech_stacks)
+    else:
+        print_error("Tech stacks not loaded. Run: python seed_tech_stacks.py")
+        print("\nContinuing with remaining tests...\n")
+    
+    # Test 3: Get Specific Stack
+    tests_total += 1
+    if test_get_specific_stack(tech_stacks or []):
+        tests_passed += 1
+    
+    # Test 4: Query with Filter
+    tests_total += 1
+    if test_query_with_filter():
+        tests_passed += 1
+    
+    # Test 5: Count Query
+    tests_total += 1
+    if test_count_query():
+        tests_passed += 1
+    
+    # Test 6: Query All Stacks
+    tests_total += 1
+    if test_query_all_stacks():
+        tests_passed += 1
+    
+    # Summary
+    print_header("TEST SUMMARY")
+    print(f"Passed: {tests_passed}/{tests_total}")
+    
+    if tests_passed == tests_total:
+        print_success("All tests passed! System is ready.")
+        print_info("✅ Tech stack system is fully operational")
+    else:
+        print_info(f"⚠️  {tests_total - tests_passed} test(s) failed")
+    
+    # Display usage examples
+    display_usage_examples()
+    
+    # Exit code
+    sys.exit(0 if tests_passed == tests_total else 1)
+
+if __name__ == "__main__":
+    main()

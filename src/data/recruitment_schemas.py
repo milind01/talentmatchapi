@@ -132,3 +132,38 @@ class CandidateSummaryResponse(BaseModel):
     match_score: Optional[float]
     skills: Optional[List[str]]
     experience_years: Optional[float]
+
+
+# ─── Technology Stack Schemas ───────────────────────────────────────────────
+
+class TechStackCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    keywords: Optional[List[str]] = None
+    skills: Optional[List[str]] = None
+    upload_dir: Optional[str] = None
+
+
+class TechStackResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    keywords: Optional[List[str]] = None
+    skills: Optional[List[str]] = None
+    upload_dir: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ─── Statistical Query Schemas ──────────────────────────────────────────────
+
+class CandidateStatsResponse(BaseModel):
+    """Response for count/percentage queries."""
+    query: str
+    query_type: str  # "count", "percentage", "list"
+    result: Dict[str, Any]  # e.g., {"count": 5, "technology": "java"} or {"percentage": 45.5, "criteria": "5+ years"}
+    breakdown: Optional[Dict[str, Any]] = None
+    candidates: Optional[List[CandidateRanked]] = None  # For "list" type queries

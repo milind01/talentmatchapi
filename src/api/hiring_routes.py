@@ -23,7 +23,7 @@ def get_llm_service() -> LLMService:
 async def compare_candidates(
     jd_id: int = Form(...),
     candidate_ids: List[int] = Form(...),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     llm_service: LLMService = Depends(get_llm_service),
 ):
@@ -92,7 +92,7 @@ async def compare_candidates(
 @router.get("/hiring-funnel/{jd_id}")
 async def get_hiring_funnel(
     jd_id: int,
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get hiring funnel metrics for a job."""
@@ -149,7 +149,7 @@ async def get_hiring_funnel(
 
 @router.get("/recruitment-analytics")
 async def get_recruitment_analytics(
-    user_id: int = 1,
+    user_id: int = Query(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
 ):
     """Get overall recruitment analytics."""
@@ -191,7 +191,7 @@ async def get_recruitment_analytics(
 async def rank_candidates_for_job(
     jd_id: int = Form(...),
     top_n: int = Form(5),
-    user_id: int = Form(1),
+    user_id: int = Form(...),  # ✅ FIXED: Now required
     db: AsyncSession = Depends(get_async_db),
     llm_service: LLMService = Depends(get_llm_service),
 ):

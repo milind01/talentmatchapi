@@ -95,11 +95,16 @@ class RequestOrchestrationService:
         query: str,
         use_agent_if_complex: bool = True,
         context: Optional[str] = None,
+        tech_stack_id: Optional[int] = None,  # ✅ NEW: Filter by tech stack
     ) -> Dict[str, Any]:
         """Execute query with intelligent routing and optional agent reasoning.
         
         Args:
             user_id: User ID
+            query: User query
+            use_agent_if_complex: Route to agent if complex
+            context: Optional conversation context
+            tech_stack_id: Optional filter by technology stack
             query: User query
             use_agent_if_complex: Route to agent if query is complex
             context: Optional conversation context
@@ -187,7 +192,8 @@ class RequestOrchestrationService:
                     llm_service=self.llm_service,
                     evaluation_service=None,
                     top_k=route_decision.parameters.get("top_k", 10),
-                    similarity_threshold=route_decision.parameters.get("similarity_threshold", 0.05),
+                    similarity_threshold=route_decision.parameters.get("similarity_threshold", 0.6),
+                    tech_stack_id=tech_stack_id,  # ✅ NEW: Pass tech stack filter
                 )
                 
                 # # Extract candidates from source documents if available
@@ -273,10 +279,15 @@ class RequestOrchestrationService:
         llm_service=None,
         evaluation_service=None,
         top_k: int = 10,
-        similarity_threshold: float = 0.05,
+        similarity_threshold: float = 0.6,
+        tech_stack_id: Optional[int] = None,  # ✅ NEW: Filter by tech stack
     ):
         if document_filters is None:
             document_filters = {"doctype": "resume"}
+        
+        # ✅ NEW: Add tech_stack_id filter if provided
+        if tech_stack_id:
+            document_filters["tech_stack_id"] = tech_stack_id
 
         logger.info(f"[query] Using filters: {document_filters}")
 
@@ -342,7 +353,7 @@ class RequestOrchestrationService:
             # -------------------------------------------------------
             documents_for_extraction = []
 
-            DOC_RELEVANCE_THRESHOLD = 0.5  # tune this; 0.500 = no match, 0.958 = strong match
+            DOC_RELEVANCE_THRESHOLD = 0.55  # tune this; 0.55 = borderline, 0.958 = strong match
 
             for doc_id, chunks in grouped.items():
                 scores = [x.get("score", 0) for x in chunks]
@@ -733,7 +744,8 @@ Answer:
         document_id: int,
         document_path: str,
         rag_service,
-        doctype:str,
+        doctype: str,
+        tech_stack_id: Optional[int] = None,  # ✅ NEW: Tech stack categorization
     ) -> Dict[str, Any]:
         """Orchestrate document processing and ingestion.
         
@@ -742,26 +754,32 @@ Answer:
             document_id: Document ID
             document_path: Path to document file
             rag_service: RAG service instance
+            doctype: Document type (resume, etc.)
+            tech_stack_id: Optional technology stack for categorization
             
         Returns:
             Processing status and results
         """
         print("🔥 process_document_upload CALLED")
         try:
-            logger.info(f"Starting document processing - document_id: {document_id}")
+            logger.info(f"Starting document processing - document_id: {document_id}, tech_stack_id: {tech_stack_id}")
             
-            # Step 1: Load and chunk document
-            chunks = await self._load_and_chunk_document(document_path)
+            # Step 1: Load and chunk document - if resume, use resume-specific chunking
+            if doctype == "resume":
+                chunks = await self._load_and_chunk_resume(document_path, document_id)
+            else:
+                chunks = await self._load_and_chunk_document(document_path)
             print(f"📝 ORCHESTRATION: Loaded {len(chunks)} chunks from {document_path}")
-            logger.info(f"Document chunked into {len(chunks)} chunks")
+            logger.info(f"Document chunked into {len(chunks)} chunks (doctype={doctype})")
             
             # Step 2: Process chunks and create embeddings
-            print(f"⚙️  ORCHESTRATION: Calling rag_service.process_documents with doctype='{doctype}'...")
+            print(f"⚙️  ORCHESTRATION: Calling rag_service.process_documents with doctype='{doctype}', tech_stack_id={tech_stack_id}...")
             processed_chunks = await rag_service.process_documents(
                 user_id,
                 documents=chunks,
                 document_id=document_id,
                 doctype=doctype,
+                tech_stack_id=tech_stack_id,  # ✅ NEW: Pass tech stack
             )
             print(f"✅ ORCHESTRATION: Got {len(processed_chunks)} processed chunks back")
             
@@ -857,6 +875,92 @@ Answer:
             start += (chunk_size - overlap)
             chunk_index += 1
 
+        return chunks
+    
+    async def _load_and_chunk_resume(self, document_path: str, document_id: int) -> List[Dict]:
+        """Load and chunk a resume with full-text context preservation.
+        
+        For resumes, we prepend the full text to each chunk so that semantic search
+        can find relevant matches even when query targets a specific skill/experience.
+        
+        Args:
+            document_path: Path to resume file
+            document_id: Resume document ID
+            
+        Returns:
+            List of chunks with context prepended
+        """
+        # Load full text
+        if document_path.lower().endswith(".pdf"):
+            try:
+                from pypdf import PdfReader
+            except ImportError:
+                from PyPDF2 import PdfReader
+            
+            import io
+            with open(document_path, "rb") as f:
+                content = f.read()
+            reader = PdfReader(io.BytesIO(content))
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() or ""
+        else:
+            with open(document_path, "rb") as f:
+                raw = f.read()
+            for encoding in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+                try:
+                    text = raw.decode(encoding)
+                    break
+                except (UnicodeDecodeError, LookupError):
+                    continue
+            else:
+                raise ValueError(f"Could not decode file: {document_path}")
+
+        if not text or len(text) < 50:
+            raise ValueError(f"Resume too short or empty: {len(text)} chars")
+
+        # Extract candidate name and key skills at start (for context prepending)
+        lines = text.split('\n')
+        candidate_name = lines[0].strip() if lines else "Unknown"
+        
+        # Find experience/skills summary (first 500 chars usually has it)
+        context_header = text[:min(500, len(text))]
+
+        # ✅ NEW STRATEGY: For resumes, create chunks that include full context
+        # This ensures every chunk has semantic signal about the full resume
+        chunk_size = 800  # Smaller for resumes (was 1000)
+        overlap = 200
+
+        chunks = []
+        start = 0
+        chunk_index = 0
+
+        while start < len(text):
+            end = start + chunk_size
+            chunk_text = text[start:end]
+            
+            # ✅ CRITICAL: Prepend context header to every resume chunk
+            # So "Java experience" query can match even in experience section
+            if chunk_index > 0:  # Don't duplicate for first chunk
+                enriched_chunk = f"[Resume: {candidate_name}]\n[Summary] {context_header}\n[Detail]\n{chunk_text}"
+            else:
+                enriched_chunk = chunk_text
+
+            chunks.append({
+                "content": enriched_chunk,
+                "title": f"Resume {document_id} - Chunk {chunk_index + 1}",
+                "metadata": {
+                    "chunk_index": chunk_index,
+                    "start_char": start,
+                    "end_char": min(end, len(text)),
+                    "resume_id": document_id,
+                }
+            })
+
+            start += (chunk_size - overlap)
+            chunk_index += 1
+
+        print(f"✅ RESUME CHUNKING: Created {len(chunks)} enriched chunks with context headers")
         return chunks
     
     async def _store_in_vector_db(self, chunks: List[Dict], rag_service) -> List[str]:
