@@ -17,8 +17,14 @@ class Base(DeclarativeBase):
 
 
 # Async engine for FastAPI
+database_url = settings.database_url
+if "postgresql://" in database_url:
+    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
+elif "postgresql+asyncpg://" not in database_url:
+    database_url = database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
+
 async_engine = create_async_engine(
-    settings.database_url.replace("postgresql://", "postgresql+asyncpg://"),
+    database_url,
     echo=settings.debug,
     poolclass=NullPool,
 )
@@ -38,8 +44,14 @@ async def get_async_db() -> AsyncSession:
 
 
 # Sync engine for Celery workers
+sync_database_url = settings.database_url
+if "postgresql://" in sync_database_url:
+    sync_database_url = sync_database_url.replace("postgresql://", "postgresql+psycopg2://")
+elif "postgresql+asyncpg://" in sync_database_url:
+    sync_database_url = sync_database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+
 sync_engine = create_engine(
-    settings.database_url,
+    sync_database_url,
     echo=settings.debug,
     pool_pre_ping=True,
 )
@@ -49,6 +61,11 @@ def get_sync_db() -> Session:
     """Get synchronous database session for workers."""
     with Session(sync_engine) as session:
         yield session
+
+
+def get_db_url() -> str:
+    """Get the async database URL with asyncpg driver."""
+    return database_url
 
 
 async def init_db():
@@ -62,3 +79,16 @@ async def close_db():
     """Close database connection."""
     await async_engine.dispose()
     logger.info("Database connection closed")
+
+
+__all__ = [
+    "Base",
+    "async_engine",
+    "sync_engine",
+    "AsyncSessionLocal",
+    "get_async_db",
+    "get_sync_db",
+    "init_db",
+    "close_db",
+    "get_db_url",
+]

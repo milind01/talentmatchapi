@@ -19,11 +19,9 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from src.core.database import Base, get_db_url
-from src.data.recruitment_models import TechStack
 from sqlalchemy import delete
+from src.core.database import AsyncSessionLocal, get_db_url
+from src.data.recruitment_models import TechStack
 
 
 async def load_tech_stacks_from_json(json_file: str) -> list:
@@ -82,12 +80,7 @@ async def seed_tech_stacks(
         db_url = get_db_url()
         print(f"🔗 Connecting to database: {db_url[:50]}...")
         
-        engine = create_async_engine(db_url, echo=False)
-        async_session = sessionmaker(
-            engine, class_=AsyncSession, expire_on_commit=False
-        )
-        
-        async with async_session() as session:
+        async with AsyncSessionLocal() as session:
             # Reset if requested
             if reset:
                 print(f"🗑️  Deleting existing tech stacks for user {user_id}...")
@@ -129,7 +122,6 @@ async def seed_tech_stacks(
             await session.commit()
             print(f"\n✅ Successfully inserted {inserted}/{len(tech_stacks_data)} tech stacks")
         
-        await engine.dispose()
         return True
         
     except Exception as e:
